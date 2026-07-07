@@ -35,6 +35,18 @@
 //#include "GameNetwork/NetworkInterface.h"
 #include "GameNetwork/udp.h"
 
+#ifndef _WIN32
+#include <errno.h>
+#include <cstring>
+#include <cstdio>
+#endif
+
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#endif
+
 
 //-------------------------------------------------------------------------
 
@@ -152,7 +164,17 @@ Int UDP::Bind(UnsignedInt IP,UnsignedShort Port)
 
   addr.sin_family=AF_INET;
   addr.sin_port=Port;
+#ifndef _WIN32
+  // GeneralsX @bugfix POSIX: bind to INADDR_ANY instead of the specific local
+  // IP. On Windows a socket bound to a unicast address still receives
+  // broadcast datagrams; on BSD/Linux it never does (destination x.x.x.255
+  // doesn't match the bound address, so the kernel drops it). LAN discovery
+  // depends on receiving those broadcasts. The game's notion of its own IP
+  // (LANAPI m_localIP, message payloads) is tracked separately and unaffected.
+  addr.sin_addr.s_addr=htonl(INADDR_ANY);
+#else
   addr.sin_addr.s_addr=IP;
+#endif
   fd=socket(AF_INET,SOCK_DGRAM,DEFAULT_PROTOCOL);
   #ifdef _WIN32
   if (fd==SOCKET_ERROR)
@@ -182,6 +204,66 @@ socklen_t namelen=sizeof(addr);
   retval=SetBlocking(FALSE);
   if (retval==-1)
     fprintf(stderr,"Couldn't set nonblocking mode!\n");
+
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+  // GeneralsX @bugfix iOS: sendto() to the limited broadcast address
+  // (255.255.255.255) fails with EHOSTUNREACH ("No route to host") on Darwin
+  // unless the socket is explicitly bound to an egress interface — the kernel
+  // won't guess between Wi-Fi/cellular/hotspot for that ambiguous destination.
+  // iOS-only: on a multi-NIC Mac this would also filter *receives* to one
+  // interface and drop unicast arriving on the others; macOS routes the
+  // subnet-directed broadcast fine without the hint.
+  // Prefer 'en0' (the Wi-Fi radio on every iPhone/iPad) over any other
+  // active IPv4 interface — other en* interfaces can be USB/debug-tunnel
+  // links (e.g. the devicectl/Xcode connection) with no route to the LAN.
+  {
+    struct ifaddrs *ifaddr = nullptr;
+    if (getifaddrs(&ifaddr) == 0)
+    {
+      const char *chosenName = nullptr;
+      unsigned int chosenIndex = 0;
+
+      for (struct ifaddrs *ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next)
+      {
+        if (ifa->ifa_addr == nullptr || ifa->ifa_addr->sa_family != AF_INET)
+          continue;
+        if ((ifa->ifa_flags & IFF_UP) == 0 || (ifa->ifa_flags & IFF_LOOPBACK) != 0)
+          continue;
+
+        unsigned int ifIndex = if_nametoindex(ifa->ifa_name);
+        if (ifIndex == 0)
+          continue;
+
+        if (strcmp(ifa->ifa_name, "en0") == 0)
+        {
+          chosenName = ifa->ifa_name;
+          chosenIndex = ifIndex;
+          break; // en0 is always preferred when present
+        }
+        if (chosenName == nullptr)
+        {
+          chosenName = ifa->ifa_name;
+          chosenIndex = ifIndex;
+        }
+      }
+
+      if (chosenIndex != 0)
+      {
+        if (setsockopt(fd, IPPROTO_IP, IP_BOUND_IF, &chosenIndex, sizeof(chosenIndex)) != 0)
+        {
+          fprintf(stderr, "DEBUG: UDP::Bind() - IP_BOUND_IF to '%s' failed, errno=%d (%s)\n",
+            chosenName, errno, strerror(errno));
+        }
+        else
+        {
+          fprintf(stderr, "DEBUG: UDP::Bind() - bound egress interface to '%s' (index %u)\n",
+            chosenName, chosenIndex);
+        }
+      }
+      freeifaddrs(ifaddr);
+    }
+  }
+#endif
 
   return(OK);
 }
@@ -234,6 +316,52 @@ Int UDP::Write(const unsigned char *msg,UnsignedInt len,UnsignedInt IP,UnsignedS
 #ifdef _UNIX
   errno=0;
 #endif
+
+#if defined(__APPLE__)
+  // GeneralsX @bugfix iOS: the limited broadcast address (255.255.255.255) is
+  // rejected by the Darwin kernel (EHOSTUNREACH) even with IP_BOUND_IF set.
+  // Rewrite it to the bound interface's subnet-directed broadcast address
+  // (e.g. 192.168.1.255), which has a concrete route. Cached after first lookup.
+  if (IP == 0xFFFFFFFFu)
+  {
+    static UnsignedInt s_directedBroadcast = 0;
+    if (s_directedBroadcast == 0)
+    {
+      struct ifaddrs *ifaddr = nullptr;
+      if (getifaddrs(&ifaddr) == 0)
+      {
+        UnsignedInt fallback = 0;
+        for (struct ifaddrs *ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next)
+        {
+          if (ifa->ifa_addr == nullptr || ifa->ifa_addr->sa_family != AF_INET)
+            continue;
+          if ((ifa->ifa_flags & IFF_UP) == 0 || (ifa->ifa_flags & IFF_LOOPBACK) != 0)
+            continue;
+          if ((ifa->ifa_flags & IFF_BROADCAST) == 0 || ifa->ifa_broadaddr == nullptr)
+            continue;
+
+          UnsignedInt bcast = ntohl(((struct sockaddr_in *)ifa->ifa_broadaddr)->sin_addr.s_addr);
+          if (bcast == 0 || bcast == 0xFFFFFFFFu)
+            continue;
+
+          if (strcmp(ifa->ifa_name, "en0") == 0)
+          {
+            s_directedBroadcast = bcast;
+            break; // en0 (Wi-Fi) always wins
+          }
+          if (fallback == 0)
+            fallback = bcast;
+        }
+        freeifaddrs(ifaddr);
+        if (s_directedBroadcast == 0)
+          s_directedBroadcast = fallback;
+      }
+    }
+    if (s_directedBroadcast != 0)
+      IP = s_directedBroadcast;
+  }
+#endif
+
   to.sin_port=htons(port);
   to.sin_addr.s_addr=htonl(IP);
   to.sin_family=AF_INET;
@@ -249,6 +377,20 @@ Int UDP::Write(const unsigned char *msg,UnsignedInt len,UnsignedInt IP,UnsignedS
 		static Int errCount = 0;
 #endif
 		DEBUG_ASSERTLOG(errCount++ > 100, ("UDP::Write() - WSA error is %s", GetWSAErrorString(WSAGetLastError()).str()));
+	}
+  #else
+  if (retval < 0)
+	{
+		m_lastError = errno;
+		// Log the first few failures only — an unreachable peer would otherwise
+		// spam one line per packet for the rest of the session.
+		static Int errCount = 0;
+		if (errCount++ < 10)
+		{
+			fprintf(stderr, "UDP::Write() - sendto() to %d.%d.%d.%d:%d failed, errno=%d (%s)\n",
+				(IP >> 24) & 0xFF, (IP >> 16) & 0xFF, (IP >> 8) & 0xFF, IP & 0xFF, port,
+				errno, strerror(errno));
+		}
 	}
   #endif
 

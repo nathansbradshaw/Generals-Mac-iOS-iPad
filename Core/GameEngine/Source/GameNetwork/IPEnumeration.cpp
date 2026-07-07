@@ -116,6 +116,18 @@ EnumeratedIP * IPEnumeration::getAddresses()
 			// GeneralsX @bugfix BenderAI 31/03/2026 Use ntohl to convert from network byte order before extracting octets;
 			// reading s_addr byte-by-byte on little-endian platforms reverses the IPv4 octets.
 			const UnsignedInt hostAddr = ntohl(addr->sin_addr.s_addr);
+
+			// GeneralsX @bugfix Skip link-local (169.254/16) addresses. macOS/iOS
+			// assign these to USB/debug-tunnel interfaces (e.g. the Xcode device
+			// link); the address list is sorted ascending and callers take the
+			// first entry as the machine's LAN identity, so a 169.254 address
+			// (< 192.168.x numerically) would be advertised to peers as our IP —
+			// peers can't route to it, breaking game joins and game-start
+			// connections even though broadcast lobby chat still works.
+			if ((hostAddr & 0xFFFF0000u) == 0xA9FE0000u)
+			{
+				continue;
+			}
 			addNewIP(
 				(UnsignedByte)((hostAddr >> 24) & 0xFF),
 				(UnsignedByte)((hostAddr >> 16) & 0xFF),

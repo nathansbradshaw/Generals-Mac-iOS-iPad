@@ -1,8 +1,18 @@
-# GeneralsOnline integration plan (macOS / iOS client)
+# GeneralsOnline integration plan (macOS / iOS, friends-scale)
 
-Goal: let this port's macOS and iOS builds play online multiplayer via
-[GeneralsOnline](https://github.com/GeneralsOnlineDevelopmentTeam) — the
-community replacement for GameSpy (matchmaking, lobbies, ladders, relays).
+Goal: online multiplayer for this port's macOS and iOS builds using
+[GeneralsOnline](https://github.com/GeneralsOnlineDevelopmentTeam)'s open-source
+stack — **for local play and a small community of friends**, not the public
+GeneralsOnline pool. That scope changes everything below:
+
+- **We self-host.** Their `Services` backend (.NET 10) is open source and
+  already builds on macOS/Linux. A friends group runs its own instance; we
+  don't need the official servers, their approval, or their anti-cheat.
+- **Both ends of every match are ours to modify.** Windows friends run a
+  Windows build *of our fork*, not retail or official GeneralsOnline. So if
+  making ARM↔x86 play work requires changing sim math or the protocol on the
+  Windows side too, that's allowed. Compatibility with the wider world is a
+  non-goal.
 
 ## What we learned scoping this (July 2026)
 
@@ -12,106 +22,98 @@ community replacement for GameSpy (matchmaking, lobbies, ladders, relays).
   `GeneralsMD/Code/GameEngine/Include|Source/GameNetwork/GeneralsOnline/**`
   (NGMP = "next-gen multiplayer") plus hooks in menus/GameSpy overlay/LANAPI.
 - **Cross-platform-capable libraries, Windows-only build.** They vendor Valve
-  GameNetworkingSockets, libcurl, nlohmann/json, stb_image, sentry. But their CI
+  GameNetworkingSockets, libcurl, nlohmann/json, stb_image, sentry. Their CI
   builds only `win32` MSVC presets — the NGMP code has never been compiled for
   macOS/ARM64, so expect Win32-isms throughout.
-- **Divergence is large:** ~1,178 commits / ~300 files ahead of upstream. A
+- **Divergence from upstream is large** (~1,178 commits / ~300 files). A
   whole-fork merge is not viable; import the NGMP subtree + minimal hooks.
-- **The backend is a non-issue.** Their `Services` repo (.NET 10) already builds
-  on macOS/Linux — we only need the *client* side.
-- **Determinism is the real gate, not networking.** Their player pool is
-  x86/Windows/MSVC; we're ARM64/Clang. Lockstep sync against Windows clients is
-  unproven and likely broken (float divergence). Apple↔Apple determinism is
-  proven (LAN iPad↔Mac works end-to-end, July 2026).
+- **Apple↔Apple determinism is proven** (LAN iPad↔Mac full game, July 2026).
+  ARM↔x86 determinism is the open question — but see scope note above: we can
+  attack it from both sides.
 
-## Strategy decision (make first)
+## Order of battle
 
-**Option A — Apple-only pool (recommended start):** use GeneralsOnline's
-matchmaking/lobby/relay infrastructure but match Apple clients only with each
-other. Sidesteps determinism entirely; everything else on this plan stays useful.
+Apple↔Apple first (no determinism risk, exercises the whole online stack),
+then cross-platform with Windows friends.
 
-**Option B — full cross-play vs Windows:** additionally requires making sim
-math deterministic across compilers/ISAs (fixed-point or soft-float for
-sim-critical paths). Months of engine surgery. Do not attempt first.
+## Phase 0 — Recon
 
-## Phase 0 — Contact + recon (no code)
-
-- [ ] Talk to the GeneralsOnline team (Discord) **before writing code**:
-      do they welcome an unofficial-platform client? What is their anti-cheat
-      posture (EasyAntiCheat plugin exists — an unapproved client may simply be
-      rejected)? Is the protocol/API considered stable?
 - [ ] Add `references/generalsonline-gameclient` submodule (their fork) for diffing.
-- [ ] Produce the authoritative diff of their NGMP subtree + hook points:
-      `git diff superhackers/main...go/main -- '**/GameNetwork/**' 'Generals*/…/Menus/**'`
-- [ ] License audit: their client code must be GPLv3-compatible to import.
+- [ ] Produce the authoritative diff of their NGMP subtree + hook points vs
+      their upstream base.
+- [ ] License audit: confirm the client code we import is GPLv3-compatible.
+- [ ] (Courtesy, not a gate) say hi to the GeneralsOnline team — we're reusing
+      their code at friends-scale and offering portability patches back.
 
-## Phase 1 — Dependencies build on macOS/iOS
+## Phase 1 — Self-hosted backend
+
+- [ ] Stand up their `Services` backend locally (macOS or a cheap Linux box):
+      MariaDB + .NET 10, import their SQL schema, fill `appsettings.json`.
+- [ ] Point a stock Windows GeneralsOnline client at it to prove the backend
+      works before any of our code enters the picture.
+- [ ] Skip: Discord app ID, S3, EasyAntiCheat — not needed at friends-scale.
+      STUN/TURN only if friends aren't on the same LAN/VPN.
+
+## Phase 2 — Dependencies build on macOS/iOS
 
 - [ ] GameNetworkingSockets via vcpkg for `arm64-osx` and `arm64-ios`
       (watch the crypto backend on iOS — OpenSSL vs Apple crypto).
-- [ ] libcurl: already in our vcpkg graph on both platforms — verify features
-      (TLS, websockets if they use it).
-- [ ] Drop: sentry (Windows crash reporting), EasyAntiCheat plugin (Windows-only;
-      moot until Phase 0 conversation resolves).
+- [ ] libcurl: already in our vcpkg graph — verify features (TLS; websockets
+      if their client uses it).
+- [ ] Drop: sentry, anti-cheat plugins.
 
-## Phase 2 — Import NGMP subtree (compile-only milestone)
+## Phase 3 — Import NGMP subtree (compile-only milestone)
 
 - [ ] Copy `GameNetwork/GeneralsOnline/**` into our tree behind a CMake option
       (`SAGE_GENERALS_ONLINE`, default OFF).
-- [ ] Port Win32-isms (threads, sockets init, wide strings, registry, `GetUserName…`)
-      to the CompatLib patterns this port already uses.
-- [ ] Milestone: compiles + links on macOS with the option ON, game still boots
-      with it OFF. No behavior yet.
+- [ ] Port Win32-isms (threads, sockets init, wide strings, registry,
+      `GetUserName…`) to the CompatLib patterns this port already uses.
+- [ ] Milestone: compiles + links on macOS with the option ON; game still
+      boots with it OFF.
 
-## Phase 3 — Hook points + auth flow
+## Phase 4 — Hook points + auth flow
 
 - [ ] Wire their menu/overlay hooks (MainMenu, GameSpyOverlay, staging rooms) —
-      smallest possible hook set, matching how their fork replaces the GameSpy path.
-- [ ] Auth: understand `OnlineServices_Auth` (their launcher does part of this
-      on Windows — account login, tokens, auto-update). Decide what replaces the
-      launcher on Mac/iOS (in-game UI; no external browser on iOS).
-- [ ] Milestone: log in, see lobby list, chat — on macOS first.
+      smallest possible hook set, matching how their fork replaces GameSpy.
+- [ ] Auth against *our* backend: understand `OnlineServices_Auth`; their
+      Windows launcher handles login/update — decide what replaces it here
+      (in-game UI; no external browser on iOS).
+- [ ] Milestone: log in, see lobby list, chat — macOS first.
 
-## Phase 4 — Match flow on macOS
+## Phase 5 — Apple↔Apple match flow
 
-- [ ] Join/host a custom match Apple↔Apple through their relay.
+- [ ] Join/host a custom match Mac↔Mac through our backend/relay.
 - [ ] Verify game-start handoff (their NextGenTransport replaces the UDP
-      transport — our Darwin socket fixes may be partly superseded here since
-      relay traffic is unicast; no broadcast needed for online play).
-- [ ] Milestone: full game Mac↔Mac over the internet.
+      transport; online traffic is unicast — no broadcast issues like LAN had).
+- [ ] iOS bring-up: lifecycle (reuse the render/sim pause machinery; sockets
+      reconnect on foreground), interface selection (revisit `IP_BOUND_IF`).
+- [ ] Milestone: iPad joins a Mac-hosted match over the internet.
 
-## Phase 5 — iOS bring-up
+## Phase 6 — Cross-platform with Windows friends
 
-- [ ] Lifecycle: persistent connections vs iOS backgrounding (reuse the
-      render/sim pause machinery; sockets need reconnect-on-foreground).
-- [ ] Local Network permission not needed (all unicast to internet) — but
-      cellular vs Wi-Fi interface selection matters (revisit `IP_BOUND_IF` usage).
-- [ ] Milestone: iPad joins a Mac-hosted online match.
+Two-sided approach, since we control the Windows build too:
 
-## Phase 6 — Hardening + upstream
+- [ ] Build a Windows client from this fork (upstream already has `win32`
+      presets) carrying the same NGMP integration.
+- [ ] Converge float behavior from both ends rather than only ours:
+      same-compiler strategy first (Clang on Windows too, matched
+      `-ffp-contract=off` / no fast-math / same FP model), before considering
+      fixed-point rewrites of sim-critical math.
+- [ ] Determinism harness: replay-compare runs of identical matches on ARM
+      Mac vs Windows x86 (model on their `check-replays.yml` CI); iterate on
+      divergences it finds.
+- [ ] Milestone: Mac/iPad↔Windows full game with no desync.
 
-- [ ] Determinism spot-checks: replay-compare harness (model on their
-      `check-replays.yml` CI).
-- [ ] Version-gate handling: their client enforces build compatibility — agree
-      with their team how Apple builds identify themselves.
-- [ ] Offer portability patches back to their GameClient repo.
+## Phase 7 — Hardening + giving back
+
+- [ ] Version-gating between our builds (all friends update together).
+- [ ] Offer the portability patches (NGMP-on-POSIX) upstream to their
+      GameClient repo.
 
 ## Risks (ranked)
 
-1. **Anti-cheat / client policy** — could veto the whole project; resolve in Phase 0.
-2. **Determinism** (only if Option B) — engine-wide, months.
-3. **Upstream churn** — they move fast (~1,200 commits); pin a tag, rebase deliberately.
-4. **Auth/launcher coupling** — login flow may assume their Windows launcher.
-5. **iOS lifecycle vs persistent sockets** — known-hard, but we own prior art.
-
-## Rough sizing
-
-| Phase | Effort |
-|---|---|
-| 0 | days (mostly conversation latency) |
-| 1 | 1–2 days |
-| 2 | 1–2 weeks (Win32-ism porting is the bulk) |
-| 3 | 1 week |
-| 4 | days–1 week (protocol debugging) |
-| 5 | 1 week |
-| 6 | ongoing |
+1. **ARM↔x86 determinism** (Phase 6 only) — unbounded until the harness
+   quantifies it; same-compiler builds may collapse it cheaply, or not.
+2. **Upstream churn** — they move fast; pin a tag, rebase deliberately.
+3. **Auth/launcher coupling** — login flow may assume their Windows launcher.
+4. **iOS lifecycle vs persistent sockets** — known-hard, but we own prior art.

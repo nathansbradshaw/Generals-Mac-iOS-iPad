@@ -17,3 +17,6 @@
 [submodule "GeneralsReplays"]
 	path = GeneralsReplays
 	url = https://github.com/fbraz3/GeneralsXReplays.git
+[submodule "references/generalsonline-gameclient"]
+	path = references/generalsonline-gameclient
+	url = https://github.com/GeneralsOnlineDevelopmentTeam/GameClient

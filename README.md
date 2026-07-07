@@ -95,7 +95,7 @@ On top of the macOS prerequisites: full Xcode (signed into your Apple ID),
 
 ```sh
 cd GeneralsX
-git submodule update --init references/fbraz3-dxvk   # iOS DXVK is built from this + Patches/dxvk-ios.patch
+git submodule update --init --recursive references/fbraz3-dxvk   # iOS DXVK is built from this + Patches/dxvk-ios.patch
 ./scripts/build/ios/fetch-moltenvk.sh                # pinned MoltenVK.framework (checksummed)
 ./scripts/build/ios/stage-fonts.sh                   # Liberation fonts, renamed as the game expects
 cmake --preset ios-vulkan
@@ -104,9 +104,57 @@ GX_TEAM_ID=<your-team-id> GX_BUNDLE_ID=com.you.generalszh \
     ./scripts/build/ios/package-ios-zh.sh --install  # assembles, signs, installs
 ```
 
-Find your team id in Xcode → Settings → Accounts. Assets ship inside the app
-bundle (self-contained install); `--dev` skips the ~2.7 GB copy for fast code
-iteration.
+`--recursive` matters: `references/fbraz3-dxvk` has its own nested submodules
+(Vulkan-Headers, SPIRV-Headers, mingw-directx-headers). Without them, Meson's
+configure step fails with `ERROR: Problem encountered: Missing Vulkan-Headers`
+partway through the `cmake --build` step above.
+
+Assets ship inside the app bundle (self-contained install); `--dev` skips the
+~2.7 GB copy for fast code iteration.
+
+### Signing & provisioning (first-time setup)
+
+Getting a real device to accept the build takes a few manual steps in Xcode's
+GUI — none of this is scriptable, so budget 10–15 minutes the first time:
+
+1. **Add your Apple ID to Xcode**: Xcode → Settings (⌘,) → Accounts → **+** →
+   Apple ID. A free Apple ID works — it gets you a "Personal Team," which is
+   all you need for on-device testing (just a 7-day app expiry, see below).
+2. **Get your Team ID.** The simplified Accounts pane no longer prints the raw
+   ID next to a Personal Team, and the web portal at developer.apple.com/account
+   only shows a Team ID page for *paid* Program members. The reliable way to
+   get it for a free/Personal Team:
+   - Open `ios/GeneralsXZH.xcodeproj` in Xcode (`open ios/GeneralsXZH.xcodeproj`).
+   - Select the **GeneralsXZH** target → **Signing & Capabilities**.
+   - Check **Automatically manage signing** and pick your account from the
+     **Team** dropdown.
+   - Xcode writes the resolved ID straight into the project file. Read it back with:
+     ```sh
+     grep -o "DEVELOPMENT_TEAM = [A-Z0-9]*;" ios/GeneralsXZH.xcodeproj/project.pbxproj | sort -u
+     ```
+3. **Pick a unique bundle ID.** The default `com.you.generalszh` /
+   `me.ammaar.generalszh` placeholders belong to nobody on your team, so Xcode
+   will refuse to register them ("Failed Registering Bundle Identifier" /
+   "app identifier ... is not available"). Use something derived from your own
+   name/domain, e.g. `com.<yourname>.generalszh`, for both the Xcode field
+   above and `GX_BUNDLE_ID` below.
+4. **Connect a device before generating a profile.** A Personal Team can't
+   create a development provisioning profile with zero registered devices
+   ("Your team has no devices from which to generate a provisioning profile").
+   Plug in your iPhone/iPad, tap **Trust This Computer** on the device, then
+   pick it as the run destination in Xcode's toolbar (or check
+   Window → Devices and Simulators) so Xcode registers its UDID.
+5. **Run the packaging script** with your real Team ID and bundle ID:
+   ```sh
+   GX_TEAM_ID=<team-id-from-step-2> GX_BUNDLE_ID=com.<yourname>.generalszh \
+       ./scripts/build/ios/package-ios-zh.sh --install
+   ```
+6. **Trust the developer certificate on-device** (first launch only): Settings →
+   General → VPN & Device Management → your Apple ID under "Developer App" →
+   **Trust**. Without this the app installs but refuses to open.
+
+Free/Personal Team builds expire after **7 days** — re-run step 5 to reinstall
+when that happens (same trust step is not needed again unless the cert changes).
 
 ## Where things are
 

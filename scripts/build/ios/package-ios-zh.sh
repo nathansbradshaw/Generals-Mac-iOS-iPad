@@ -190,11 +190,10 @@ echo "==> App ready: ${APP}"
 
 if [[ "${DO_INSTALL}" == "1" ]]; then
     echo "==> Installing to connected device"
-    DEVICE_ID=$(xcrun devicectl list devices 2>/dev/null | awk '/connected/{print $(NF-2); exit}')
-    if [[ -z "${DEVICE_ID}" ]]; then
-        # fall back: parse the identifier column (3rd-from-last varies with model names)
-        DEVICE_ID=$(xcrun devicectl list devices 2>/dev/null | grep -i connected | grep -oE '[0-9A-F-]{36}' | head -1)
-    fi
+    # Match the identifier by its UUID shape rather than column position: device
+    # Name/Model can contain spaces and parens (e.g. "iPad mini (6th generation)"),
+    # which breaks any fixed-field-index parse of this table.
+    DEVICE_ID=$(xcrun devicectl list devices 2>/dev/null | grep -i connected | grep -oE '[0-9A-F-]{36}' | head -1)
     if [[ -z "${DEVICE_ID}" ]]; then
         echo "ERROR: no connected device found (xcrun devicectl list devices)"
         exit 1

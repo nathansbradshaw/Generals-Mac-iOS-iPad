@@ -31,10 +31,33 @@ GeneralsOnline pool. That scope changes everything below:
   ARM↔x86 determinism is the open question — but see scope note above: we can
   attack it from both sides.
 
+## MVP definition
+
+**Windows + Linux + macOS + iOS cross-play on a LAN (or VPN), using
+GeneralsOnline's new netcode, custom matches only.**
+
+- All players run clients built from **this fork** (all four platforms, all
+  Clang, matched FP flags — best-case starting position for determinism).
+- One machine on the LAN self-hosts their `Services` backend (.NET + MariaDB;
+  builds on macOS/Linux). No internet dependency at all.
+- Why keep the backend even for LAN: their lobby/matchmaking flow is
+  intertwined with the services API — running the small service unmodified is
+  *less* work than rewiring NGMP to serverless LAN discovery. The part we're
+  actually here for (NextGenTransport/NetworkMesh on GameNetworkingSockets,
+  60Hz) comes along unmodified.
+- Cut from MVP: NAT traversal/STUN/TURN/relays, quickmatch/ladders/stats,
+  social/Discord, anti-cheat, auto-update, official-pool compatibility.
+  Pre-created accounts; friends update builds together.
+
+MVP critical path: NGMP compiles on POSIX (macOS → Linux → iOS) → custom-match
+hooks + backend URL config → Windows/Linux clients from this fork → determinism
+harness across ISAs. Linux is cheap once macOS works — the GeneralsX lineage
+already builds the engine there.
+
 ## Order of battle
 
 Apple↔Apple first (no determinism risk, exercises the whole online stack),
-then cross-platform with Windows friends.
+then cross-platform with Windows/Linux friends.
 
 ## Phase 0 — Recon
 

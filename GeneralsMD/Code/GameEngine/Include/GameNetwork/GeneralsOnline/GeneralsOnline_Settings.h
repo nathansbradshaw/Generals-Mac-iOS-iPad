@@ -1,5 +1,6 @@
 #pragma once
 #include "libcurl/curl.h"
+#include "GameNetwork/GeneralsOnline/NextGenMP_defines.h"
 
 enum EHTTPVersion
 {

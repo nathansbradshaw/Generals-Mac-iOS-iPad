@@ -2,7 +2,11 @@
 #include "GameNetwork/GeneralsOnline/NGMP_include.h"
 #include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
 
+#ifdef _WIN32
+#ifdef _WIN32
 #include <ws2ipdef.h>
+#endif
+#endif
 #include "GameNetwork/NetworkDefs.h"
 #include "GameNetwork/NetworkInterface.h"
 #include "GameLogic/GameLogic.h"

@@ -4,7 +4,11 @@
 #define GENERALS_ONLINE
 #endif
 
-#define GENERALS_ONLINE_USE_PLUGINS_INTERFACE
+// GeneralsX @feature Anti-cheat (EasyAntiCheat) is cut from the friends-scale MVP.
+// The plugin interface loads a Win32 DLL via LoadLibraryA/GetProcAddress; leaving
+// this undefined selects the inert stub branch in PluginInterfaces.h on every
+// platform, which is what we want (no AC on macOS/iOS/Linux/Windows in this fork).
+//#define GENERALS_ONLINE_USE_PLUGINS_INTERFACE
 
 //#define USE_MAULLER_ONEDRIVE_FIX 1
 //#define USE_STUBBJAX_TRANSPORT_CONTAIN_FIX 1

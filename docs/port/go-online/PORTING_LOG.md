@@ -20,10 +20,19 @@ fails with these themes, burned down one commit each below:
 | include paths | fixed |
 | Transport refactor | fixed |
 | utc_clock | fixed |
-| winhttp | pending |
-| winsock headers (`ws2ipdef.h` in NetworkMesh.h) | pending |
+| winhttp | fixed — `_WIN32`-guarded, POSIX no-proxy fallback (curl honors `http_proxy`) |
+| winsock headers (`ws2ipdef.h`/`ws2tcpip.h`) | fixed — `_WIN32`-guarded (no winsock symbols actually used) |
 | `localtime_s` (NGMP_Helpers.cpp) | fixed — CompatLib shim in time_compat.h |
-| lobby-camera-zoom defines undeclared | pending |
+| lobby-camera-zoom defines undeclared | fixed — Settings.h now includes NextGenMP_defines.h |
+| anti-cheat plugin interface | fixed — `GENERALS_ONLINE_USE_PLUGINS_INTERFACE` left undefined (cut from MVP), inert stub branch used everywhere |
+| Win32 safe-string/mem funcs (`memcpy_s`,`sprintf_s`,`GetCurrentDirectoryA`,`SetEnvironmentVariableA`) | pending |
+| `byte` type (NextGenTransport/NetworkMesh) | pending |
+| `MAX_MESSAGE_LEN` constant | pending |
+| launcher/updater Win32 (`shellapi.h`,`ShellExecuteA`,`__declspec`,`LoadLibraryA`) | pending — non-MVP, stub |
+| NetworkInterface/ConnectionManager API drift (`GetConnectionManager`,`SeedLatencyData`) | pending |
+| NGMPGame countdown member drift | pending |
+| DownloadManager/GameLogic/PSPlayerStats API drift | pending |
+| non-POD varargs (std::string to printf) | pending — real bug off-MSVC |
 
 **Transport refactor details:** did the refactor mechanically in our tree instead
 of copying their files (ours is already POSIX-ported and modernized). `Transport`

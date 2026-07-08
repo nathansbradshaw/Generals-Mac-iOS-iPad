@@ -156,6 +156,7 @@ bool HTTPManager::DeterminePlatformProxySettings()
 {
 	CHECK_MAIN_THREAD;
 
+#ifdef _WIN32
 	WINHTTP_CURRENT_USER_IE_PROXY_CONFIG pProxyConfig;
 	WinHttpGetIEProxyConfigForCurrentUser(&pProxyConfig);
 
@@ -186,6 +187,11 @@ bool HTTPManager::DeterminePlatformProxySettings()
 	if (pProxyConfig.lpszProxy) GlobalFree(pProxyConfig.lpszProxy);
 	if (pProxyConfig.lpszAutoConfigUrl) GlobalFree(pProxyConfig.lpszAutoConfigUrl);
 	if (pProxyConfig.lpszProxyBypass) GlobalFree(pProxyConfig.lpszProxyBypass);
+#else
+	// GeneralsX @feature No system proxy auto-detection on POSIX; friends-scale
+	// play is LAN/VPN and needs no proxy. curl still honors http_proxy env vars.
+	m_bProxyEnabled = false;
+#endif
 
 	return m_bProxyEnabled;
 }

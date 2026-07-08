@@ -37,6 +37,10 @@ inline uint32_t GetCurrentDirectory(uint32_t buflen, char* buf) {
   }
   return 0;
 }
+// GeneralsX @build ANSI-suffixed alias (Windows resolves *A to the char variant)
+inline uint32_t GetCurrentDirectoryA(uint32_t buflen, char* buf) {
+  return GetCurrentDirectory(buflen, buf);
+}
 
 // GeneralsX @TheSuperHackers @build BenderAI 11/02/2026 Win32 file system APIs → std::filesystem (C++17)
 // SetCurrentDirectory - change working directory

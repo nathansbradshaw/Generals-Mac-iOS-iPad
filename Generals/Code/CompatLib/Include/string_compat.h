@@ -2,7 +2,31 @@
 
 #include <stddef.h>
 #include <stdarg.h>
+#include <stdio.h>   // GeneralsX @build vsnprintf for sprintf_s shim
 #include <string.h>  // GeneralsX @build fbraz 10/02/2026 - strlen, memcpy for strlcpy/strlcat
+
+// GeneralsX @build MSVC sprintf_s. Array form deduces the buffer size; the
+// GeneralsOnline netcode uses this two-argument-plus-varargs template form.
+#ifndef _SPRINTF_S_DEFINED
+#define _SPRINTF_S_DEFINED
+template <size_t N>
+inline int sprintf_s(char (&buffer)[N], const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int ret = vsnprintf(buffer, N, format, args);
+    va_end(args);
+    return ret;
+}
+inline int sprintf_s(char* buffer, size_t sizeOfBuffer, const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int ret = vsnprintf(buffer, sizeOfBuffer, format, args);
+    va_end(args);
+    return ret;
+}
+#endif
 
 typedef const char* LPCSTR;
 typedef char* LPSTR;

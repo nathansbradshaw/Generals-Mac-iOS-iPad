@@ -153,7 +153,7 @@ Bool NextGenTransport::doRecv(void)
                     // Max bytes we ever expect from the wire:
                     // header + payload (no trailing length/addr/port)
                     const uint32_t maxWireSize =
-                        static_cast<uint32_t>(sizeof(TransportMessageHeader) + MAX_MESSAGE_LEN);
+                        static_cast<uint32_t>(sizeof(TransportMessageHeader) + MAX_NETWORK_MESSAGE_LEN);
 
                     if (numBytes > maxWireSize)
                     {
@@ -277,7 +277,7 @@ Bool NextGenTransport::doRecv(void)
                                 NetworkLog(ELogVerbosity::LOG_RELEASE,
                                     "Game Packet Recv: WARNING - Truncating payload from %u to %zu bytes for inBuffer[%d] from user %lld. "
                                     "This indicates the incoming packet exceeds the buffer capacity and data will be lost. "
-                                    "Consider increasing MAX_MESSAGE_LEN or MAX_PACKET_SIZE.",
+                                    "Consider increasing MAX_NETWORK_MESSAGE_LEN or MAX_PACKET_SIZE.",
                                     payloadLen, dstCap, i, static_cast<long long>(userID));
                             }
 
@@ -390,7 +390,7 @@ Bool NextGenTransport::doRecv(void)
                         // Max bytes we ever expect from the wire:
                         // header + payload (no trailing length/addr/port)
                         const uint32_t maxWireSize =
-                            static_cast<uint32_t>(sizeof(TransportMessageHeader) + MAX_MESSAGE_LEN);
+                            static_cast<uint32_t>(sizeof(TransportMessageHeader) + MAX_NETWORK_MESSAGE_LEN);
 
                         if (vecPacketDataWithoutHeader.size() > maxWireSize)
                         {
@@ -518,7 +518,7 @@ Bool NextGenTransport::doRecv(void)
                                     NetworkLog(ELogVerbosity::LOG_RELEASE,
                                         "Game Packet Recv: WARNING - Truncating payload from %u to %zu bytes for inBuffer[%d] from user %lld. "
                                         "This indicates the incoming packet exceeds the buffer capacity and data will be lost. "
-                                        "Consider increasing MAX_MESSAGE_LEN or MAX_PACKET_SIZE.",
+                                        "Consider increasing MAX_NETWORK_MESSAGE_LEN or MAX_PACKET_SIZE.",
                                         payloadLen, dstCap, i, static_cast<long long>(kvPair.second.m_userID));
                                 }
 

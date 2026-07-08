@@ -11,6 +11,19 @@
 
 #define GMEM_FIXED 0
 
+// GeneralsX @build MSVC memcpy_s → checked memcpy. Returns 0 on success, else EINVAL/ERANGE.
+#ifndef _MEMCPY_S_DEFINED
+#define _MEMCPY_S_DEFINED
+#include <errno.h>
+static inline int memcpy_s(void* dest, size_t destsz, const void* src, size_t count)
+{
+    if (dest == nullptr) return EINVAL;
+    if (src == nullptr || destsz < count) { memset(dest, 0, destsz); return src == nullptr ? EINVAL : ERANGE; }
+    memcpy(dest, src, count);
+    return 0;
+}
+#endif
+
 static void *GlobalAlloc(int, size_t size)
 {
   return malloc(size);

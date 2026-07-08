@@ -18,6 +18,12 @@ typedef unsigned int UINT;
 #ifndef BYTE
 typedef uint8_t BYTE;
 #endif
+// GeneralsX @build Windows rpcndr.h defines lowercase `byte` as unsigned char;
+// GeneralsOnline netcode relies on it. Not std::byte (that's a scoped enum).
+#ifndef _BYTE_DEFINED
+#define _BYTE_DEFINED
+typedef unsigned char byte;
+#endif
 #ifndef BOOL
 typedef int BOOL;
 #endif

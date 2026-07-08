@@ -19,7 +19,7 @@ fails with these themes, burned down one commit each below:
 |---|---|
 | include paths | fixed |
 | Transport refactor | fixed |
-| utc_clock | pending |
+| utc_clock | fixed |
 | winhttp | pending |
 | winsock headers (`ws2ipdef.h` in NetworkMesh.h) | pending |
 | `localtime_s` (NGMP_Helpers.cpp) | pending |

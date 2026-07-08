@@ -22,6 +22,13 @@ endif()
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
+# vcpkg manifest features must be selected before project() runs the vcpkg
+# toolchain. SAGE_GENERALS_ONLINE is defined later (cmake/config-build.cmake),
+# but -DSAGE_GENERALS_ONLINE=ON puts it in the cache before we get here.
+if(SAGE_GENERALS_ONLINE AND NOT "generals-online" IN_LIST VCPKG_MANIFEST_FEATURES)
+    list(APPEND VCPKG_MANIFEST_FEATURES "generals-online")
+endif()
+
 include(FeatureSummary)
 include(CMakeDependentOption)
 

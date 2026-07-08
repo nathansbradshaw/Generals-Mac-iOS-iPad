@@ -1153,6 +1153,23 @@ add_library(z_gameengine STATIC)
 
 target_sources(z_gameengine PRIVATE ${GAMEENGINE_SRC})
 
+# GeneralsOnline (NGMP) client — imported subtree, see
+# docs/port/GENERALS_ONLINE_INTEGRATION_PLAN.md. Vendored steam/curl includes
+# are shim headers redirecting to vcpkg ports; sentry is a no-op stub.
+if(SAGE_GENERALS_ONLINE)
+    file(GLOB_RECURSE GENERALS_ONLINE_SRC CONFIGURE_DEPENDS
+        Source/GameNetwork/GeneralsOnline/*.cpp
+    )
+    target_sources(z_gameengine PRIVATE ${GENERALS_ONLINE_SRC})
+    find_package(GameNetworkingSockets CONFIG REQUIRED)
+    find_package(CURL REQUIRED)
+    target_link_libraries(z_gameengine PUBLIC
+        GameNetworkingSockets::GameNetworkingSockets_s
+        CURL::libcurl
+    )
+    target_compile_definitions(z_gameengine PUBLIC SAGE_GENERALS_ONLINE=1)
+endif()
+
 target_include_directories(z_gameengine PUBLIC
     Include
     ../CompatLib/Include  # Needed for d3dx8math.h in PCH

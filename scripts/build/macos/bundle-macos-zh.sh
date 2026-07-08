@@ -234,7 +234,7 @@ cat > "${CONTENTS_DIR}/Info.plist" <<'PLIST'
     <key>CFBundleExecutable</key>
     <string>run.sh</string>
     <key>CFBundleIconFile</key>
-    <string>generalsx-zh_icon.png</string>
+    <string>GeneralsXZH</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
@@ -250,9 +250,9 @@ echo "  + GeneralsXZH"
 cp "${BINARY_SRC}" "${BIN_DIR}/GeneralsXZH"
 chmod +x "${BIN_DIR}/GeneralsXZH"
 
-# Icon
-echo "  + Icon (generalsx-zh_icon.png)"
-cp "${PROJECT_ROOT}/assets/generalsx-zh_icon.png" "${RESOURCES_DIR}/"
+# Icon (.icns generated from the iOS app icon; Finder/Dock require icns, not png)
+echo "  + Icon (GeneralsXZH.icns)"
+cp "${PROJECT_ROOT}/assets/macos/GeneralsXZH.icns" "${RESOURCES_DIR}/"
 
 # SDL3
 echo "  + libSDL3"

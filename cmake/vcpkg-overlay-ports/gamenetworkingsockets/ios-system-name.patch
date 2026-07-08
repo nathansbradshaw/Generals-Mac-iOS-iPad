@@ -1,0 +1,36 @@
+diff -ru a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt	2026-07-07 20:54:09
++++ b/CMakeLists.txt	2026-07-07 20:54:09
+@@ -153,7 +153,7 @@
+ 
+ 	if(CMAKE_SYSTEM_NAME MATCHES Linux)
+ 		target_compile_definitions(${TGT} PUBLIC LINUX)
+-	elseif(CMAKE_SYSTEM_NAME MATCHES Darwin)
++	elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin|iOS")
+ 		target_compile_definitions(${TGT} PUBLIC OSX)
+ 	elseif(CMAKE_SYSTEM_NAME MATCHES FreeBSD)
+ 		target_compile_definitions(${TGT} PUBLIC FREEBSD)
+diff -ru a/src/CMakeLists.txt b/src/CMakeLists.txt
+--- a/src/CMakeLists.txt	2026-07-07 20:54:09
++++ b/src/CMakeLists.txt	2026-07-07 20:54:09
+@@ -325,7 +325,7 @@
+ 		#if(USE_STEAMWEBRTC AND NOT STEAMWEBRTC_USE_STATIC_LIBS)
+ 		#	target_link_libraries(${GNS_TARGET} PRIVATE dl)
+ 		#endif()
+-	elseif(CMAKE_SYSTEM_NAME MATCHES Darwin)
++	elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin|iOS")
+ 		#if(USE_STEAMWEBRTC AND NOT STEAMWEBRTC_USE_STATIC_LIBS)
+ 		#	target_link_libraries(${GNS_TARGET} PRIVATE dl)
+ 		#endif()
+diff -ru a/src/tier0/dbg.cpp b/src/tier0/dbg.cpp
+--- a/src/tier0/dbg.cpp	2026-07-07 20:54:09
++++ b/src/tier0/dbg.cpp	2026-07-07 21:05:16
+@@ -121,6 +121,8 @@
+ 	// NDA material
+ #elif IsNintendoSwitch()
+ 	return false;
++#elif IsIOS() || IsTVOS()
++	return false;
+ #else
+ 	#error "HALP"
+ #endif

@@ -138,3 +138,15 @@ Real FrameMetrics::getAverageLatency() {
 Int FrameMetrics::getMinimumCushion() {
 	return m_minimumCushion;
 }
+
+#if defined(SAGE_GENERALS_ONLINE)
+// GeneralsX @feature GeneralsOnline: pre-seed averages at match start.
+#ifndef GENERALS_ONLINE_HIGH_FPS_LIMIT
+#define GENERALS_ONLINE_HIGH_FPS_LIMIT 60
+#endif
+void FrameMetrics::SeedLatencyData(int latency)
+{
+	m_averageFps = GENERALS_ONLINE_HIGH_FPS_LIMIT;
+	m_averageLatency = latency / 1000.f;
+}
+#endif

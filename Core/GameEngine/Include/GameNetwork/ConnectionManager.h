@@ -56,6 +56,25 @@ public:
 
 	// End SubsystemInterface functions
 
+#if defined(SAGE_GENERALS_ONLINE)
+	// GeneralsX @feature GeneralsOnline: pre-seed the per-slot fps/latency averages
+	// and frame metrics so match-start run-ahead begins sane instead of ramping.
+	void SeedLatencyData(int highestLatency)
+	{
+#ifndef GENERALS_ONLINE_HIGH_FPS_LIMIT
+#define GENERALS_ONLINE_HIGH_FPS_LIMIT 60
+#endif
+		for (int i = 0; i < MAX_SLOTS; ++i) {
+			m_fpsAverages[i] = GENERALS_ONLINE_HIGH_FPS_LIMIT;
+		}
+		for (int i = 0; i < MAX_SLOTS; ++i) {
+			m_latencyAverages[i] = highestLatency / 1000.f;
+		}
+
+		m_frameMetrics.SeedLatencyData(highestLatency);
+	}
+#endif
+
 	void updateRunAhead(Int oldRunAhead, Int frameRate, Bool didSelfSlug, Int nextExecutionFrame);	///< Update the run ahead value.  If we are the current packet router, issue the command.
 
 	void attachTransport(Transport *transport);

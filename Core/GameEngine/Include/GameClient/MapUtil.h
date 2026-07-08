@@ -106,8 +106,10 @@ public:
 
 	void updateCache();
 
-	AsciiString getMapDir() const;
-	AsciiString getUserMapDir() const;
+	// GeneralsX @feature bCustomMapDebug added by the GeneralsOnline fork (their impl
+	// ignores it; kept for API compatibility with the imported NGMP call sites).
+	AsciiString getMapDir(bool bCustomMapDebug = false) const;
+	AsciiString getUserMapDir(bool bCustomMapDebug = false) const;
 	AsciiString getMapExtension() const;
 
 	const MapMetaData *findMap(AsciiString mapName);

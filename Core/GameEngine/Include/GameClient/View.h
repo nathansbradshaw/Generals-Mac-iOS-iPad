@@ -175,6 +175,13 @@ public:
 	virtual void setTimeMultiplier(Int multiple) {}; ///< Set the time multiplier.
 	virtual void setCameraHeightAboveGroundLimitsToDefault(Real heightScale = 1.0f) {};
 	virtual void setDefaultView(Real pitch, Real angle, Real maxHeight) {};
+#if defined(SAGE_GENERALS_ONLINE)
+	// GeneralsX @feature GeneralsOnline lobby camera. bForceDefaultCam selects the
+	// shell/default camera limits vs the online lobby limits. Full behavior (which
+	// reads NGMP camera settings) is wired in Phase 5; base impl is a no-op so the
+	// NGMP call sites compile. No default arg, to avoid ambiguity with the 3-arg form.
+	virtual void setDefaultView(Real pitch, Real angle, Real maxHeight, bool bForceDefaultCam) {};
+#endif
 	virtual void zoomCamera( Real finalZoom, Int milliseconds, Real easeIn=0.0f, Real easeOut=0.0f ) {};
 	virtual void pitchCamera( Real finalPitch, Int milliseconds, Real easeIn=0.0f, Real easeOut=0.0f ) {};
 

@@ -166,6 +166,10 @@ public:
 	void updateLoadProgress( Int progress );
 	void deleteLoadScreen();
 
+	// GeneralsX @feature GeneralsOnline: is a load screen currently up? Used by the
+	// NGMP lobby to decide when the service stops being authoritative over the game.
+	bool IsLoadScreenActive() const { return m_loadScreen != nullptr; }
+
 	//Kris: Cut setGameLoading() and replaced with setLoadingMap() and setLoadingSave() -- reason: nomenclature
 	//void setGameLoading( Bool loading ) { m_loadingScene = loading; }
 	void setLoadingMap( Bool loading ) { m_loadingMap = loading; }

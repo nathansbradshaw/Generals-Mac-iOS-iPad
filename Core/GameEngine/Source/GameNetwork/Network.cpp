@@ -161,6 +161,16 @@ public:
 	virtual Int getAverageFPS() override { return m_conMgr->getAverageFPS(); }
 	virtual Int getSlotAverageFPS(Int slot) override;
 
+#if defined(SAGE_GENERALS_ONLINE)
+	// GeneralsX @feature GeneralsOnline: see NetworkInterface.
+	virtual ConnectionManager* GetConnectionManager() override { return m_conMgr; }
+	virtual void SeedLatencyData(int highestLatency) override
+	{
+		if (m_conMgr)
+			m_conMgr->SeedLatencyData(highestLatency);
+	}
+#endif
+
 	virtual void attachTransport(Transport *transport) override;
 	virtual void initTransport() override;
 

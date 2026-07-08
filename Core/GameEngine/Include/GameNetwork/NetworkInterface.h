@@ -101,6 +101,13 @@ public:
 	virtual Int getAverageFPS() = 0;
 	virtual Int getSlotAverageFPS(Int slot) = 0;
 
+#if defined(SAGE_GENERALS_ONLINE)
+	// GeneralsX @feature GeneralsOnline: pre-seed run-ahead metrics at match start,
+	// and expose the ConnectionManager to the NGMP netcode.
+	virtual void SeedLatencyData(int highestLatency) = 0;
+	virtual ConnectionManager* GetConnectionManager() = 0;
+#endif
+
 	virtual void attachTransport(Transport *transport) = 0;
 	virtual void initTransport() = 0;
 	virtual Bool sawCRCMismatch() = 0;

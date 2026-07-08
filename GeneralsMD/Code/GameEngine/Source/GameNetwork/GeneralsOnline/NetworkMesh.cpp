@@ -1447,7 +1447,10 @@ std::string PlayerConnection::GetConnectionType()
 		return "(disconnected)";
 
 	char szBuf[2048] = { 0 };
-	int ret = SteamNetworkingSockets()->GetConnectionType(m_hSteamConnection, szBuf, 2048);
+	// GeneralsX @build Their vendored GameNetworkingSockets exposes GetConnectionType;
+	// upstream/vcpkg only has GetDetailedConnectionStatus (same signature, superset
+	// output that still contains the route type the IsDirect() check parses for).
+	int ret = SteamNetworkingSockets()->GetDetailedConnectionStatus(m_hSteamConnection, szBuf, 2048);
 	NetworkLog(ELogVerbosity::LOG_DEBUG, "[STEAM] PlayerConnection::GetConnectionType returned %d", ret);
 	return std::string(szBuf);
 }

@@ -45,6 +45,11 @@ public:
 	Int getAverageFPS();
 	Int getMinimumCushion();
 
+#if defined(SAGE_GENERALS_ONLINE)
+	// GeneralsX @feature GeneralsOnline: pre-seed averages at match start.
+	void SeedLatencyData(int latency);
+#endif
+
 protected:
 	// These are used for keeping track of parameters to the run ahead equation.
 	// frames per second history variables.

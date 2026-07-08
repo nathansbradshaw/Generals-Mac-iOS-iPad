@@ -34,10 +34,21 @@ fails with these themes, burned down one commit each below:
 | launcher/updater Win32 (`shellapi.h`,`ShellExecuteA`,`__declspec`,`LoadLibraryA`) | fixed — shellapi_compat.h shim, `_WIN32`-guarded GPU hints, DownloadManager::SetFileName stub added; DPAPI credential encryption gated to `_WIN32` (plaintext fallback off-Windows) |
 | GameSpyOverlay message-box variants (`GSMessageBoxNoButtons`,`GSMessageBoxCancel`) | fixed — ported their GS wrappers + `MessageBoxNoButtons`/`MSG_BOX_NONE` into both MD and non-MD engines |
 | StatsInterface macro `stats.##name` paste + `PSPlayerStats` elo fields | fixed — `.##`→`.`, added `elo_rating`/`elo_num_matches` to PSPlayerStats |
-| NGMPGame countdown member drift | pending — transitive NextGenMP_defines ordering |
-| NetworkInterface `GetConnectionManager`/`SeedLatencyData`, GameLogic `IsLoadScreenActive`, ISteamNetworkingSockets `GetConnectionType` | pending — engine API drift |
-| NGMPGame/LobbyInterface signature drift ("too many arguments") | pending |
-| non-POD varargs (std::string to printf) | pending — real bug off-MSVC |
+| NGMPGame countdown member drift | fixed — NGMPGame.h now includes NextGenMP_defines.h (self-contained, like Settings.h) |
+| NetworkInterface `GetConnectionManager`/`SeedLatencyData` + ConnectionManager/FrameMetrics `SeedLatencyData` | fixed — ported their engine additions, guarded `#if defined(SAGE_GENERALS_ONLINE)` (Core sources inherit that define via z_gameengine) |
+| GameLogic `IsLoadScreenActive` | fixed — ported inline getter (MD only) |
+| ISteamNetworkingSockets `GetConnectionType` | fixed — substituted GetDetailedConnectionStatus (their vendored GNS has both; vcpkg only the latter) |
+| `View::setDefaultView` 4-arg (lobby camera) | fixed (compile-only) — added no-op 4-arg overload guarded by SAGE_GENERALS_ONLINE; full lobby-camera behavior deferred to Phase 5 (would couple W3DView to NGMP Settings) |
+| `MapCache::getUserMapDir`/`getMapDir` bCustomMapDebug param | fixed — added defaulted bool, ignored (matches their impl) |
+| non-POD varargs (std::string `mwid` to `%s`) | fixed — added .c_str() (real bug off-MSVC) |
+
+**SAGE_GENERALS_ONLINE as a preprocessor macro:** the CMake option adds
+`target_compile_definitions(z_gameengine PUBLIC SAGE_GENERALS_ONLINE=1)`.
+Core sources build via the `corei_gameengine_private` INTERFACE library
+straight into z_gameengine, so they see that define — which lets shared
+engine additions (NetworkInterface/ConnectionManager/FrameMetrics/View) be
+guarded so the non-MD `g_gameengine` build and the option-OFF build are
+unaffected.
 | NetworkInterface/ConnectionManager API drift (`GetConnectionManager`,`SeedLatencyData`) | pending |
 | NGMPGame countdown member drift | pending |
 | DownloadManager/GameLogic/PSPlayerStats API drift | pending |

@@ -55,7 +55,10 @@ void showNotificationBox(AsciiString nick, UnicodeString message, bool bPlaySoun
 #define GENERALS_ONLINE_NET_VERSION 1
 #define GENERALS_ONLINE_SERVICE_VERSION 1
 
-#if !_DEBUG || defined(USE_DEBUG_ON_LIVE_SERVER)
+// GeneralsX @feature Credential-at-rest encryption uses Windows DPAPI
+// (CryptProtectData); gate it on _WIN32. On macOS/iOS/Linux the plaintext
+// fallback is used — acceptable at friends-scale (pre-created accounts).
+#if (!_DEBUG || defined(USE_DEBUG_ON_LIVE_SERVER)) && defined(_WIN32)
 #define GENERALS_ONLINE_ENCRYPT_CREDENTIALS 1
 #endif
 

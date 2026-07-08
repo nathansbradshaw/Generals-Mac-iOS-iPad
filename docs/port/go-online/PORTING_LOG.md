@@ -28,7 +28,12 @@ fails with these themes, burned down one commit each below:
 | Win32 safe-string/mem funcs (`memcpy_s`,`sprintf_s`,`GetCurrentDirectoryA`,`SetEnvironmentVariableA`) | pending |
 | `byte` type (NextGenTransport/NetworkMesh) | pending |
 | `MAX_MESSAGE_LEN` constant | pending |
-| launcher/updater Win32 (`shellapi.h`,`ShellExecuteA`,`__declspec`,`LoadLibraryA`) | pending — non-MVP, stub |
+| Win32 safe-string/mem funcs (`memcpy_s`,`sprintf_s`,`GetCurrentDirectoryA`,`SetEnvironmentVariableA`) | fixed — CompatLib shims/aliases |
+| `byte` type (NextGenTransport/NetworkMesh) | fixed — CompatLib typedef |
+| `MAX_MESSAGE_LEN` constant | fixed — renamed to MAX_NETWORK_MESSAGE_LEN in NextGenTransport.cpp |
+| launcher/updater Win32 (`shellapi.h`,`ShellExecuteA`,`__declspec`,`LoadLibraryA`) | fixed — shellapi_compat.h shim, `_WIN32`-guarded GPU hints, DownloadManager::SetFileName stub added; DPAPI credential encryption gated to `_WIN32` (plaintext fallback off-Windows) |
+| GameSpyOverlay message-box variants (`GSMessageBoxNoButtons`,`GSMessageBoxCancel`) | pending — hook-point API drift |
+| StatsInterface macro `stats.##name` paste + `PSPlayerStats` elo fields | pending — non-MVP stats |
 | NetworkInterface/ConnectionManager API drift (`GetConnectionManager`,`SeedLatencyData`) | pending |
 | NGMPGame countdown member drift | pending |
 | DownloadManager/GameLogic/PSPlayerStats API drift | pending |

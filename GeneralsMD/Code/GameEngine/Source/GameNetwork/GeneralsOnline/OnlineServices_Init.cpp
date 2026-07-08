@@ -7,9 +7,7 @@
 #include "realcrc.h"
 #include "GameNetwork/DownloadManager.h"
 #ifdef _WIN32
-#ifdef _WIN32
 #include <ws2tcpip.h>
-#endif
 #endif
 #include "GameClient/DisplayStringManager.h"
 #include "GameNetwork/NetworkInterface.h"
@@ -27,11 +25,15 @@
 #include "GameClient/GameText.h"
 #include <unordered_set>
 
+#ifdef _WIN32
+// GeneralsX @build Windows-only discrete-GPU hints (Nvidia Optimus / AMD PowerXpress);
+// only meaningful when exported from the .exe. No effect on macOS/iOS/Linux.
 extern "C"
 {
 	__declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
 	__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 }
+#endif
 
 NGMP_OnlineServicesManager* NGMP_OnlineServicesManager::m_pOnlineServicesManager = nullptr;
 std::recursive_mutex NGMP_OnlineServicesManager::m_singletonMutex;

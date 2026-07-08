@@ -3,16 +3,20 @@
 #include "GameNetwork/GeneralsOnline/HTTP/HTTPManager.h"
 #include "GameNetwork/GeneralsOnline/HTTP/HTTPRequest.h"
 #include "GameNetwork/GeneralsOnline/json.hpp"
-#include <shellapi.h>
 #include <algorithm>
 #include <chrono>
 #include <random>
+#ifdef _WIN32
+#include <shellapi.h>
 #include <windows.h>
 #include <wincred.h>
+#endif
 #include "GameNetwork/GameSpyOverlay.h"
 #include "../json.hpp"
 
+#ifdef _WIN32
 #pragma comment(lib, "Crypt32.lib")
+#endif
 
 #if defined(USE_TEST_ENV)
 #define CREDENTIALS_FILENAME "credentials_env_test.json"

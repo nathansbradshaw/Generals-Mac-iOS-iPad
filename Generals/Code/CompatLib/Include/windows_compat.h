@@ -217,6 +217,7 @@ static inline DWORD timeEndPeriod(DWORD period)
 #include "gdi_compat.h"
 #include "wnd_compat.h"
 #include "file_compat.h"
+#include "shellapi_compat.h"  // GeneralsX @build ShellExecute family → POSIX (GeneralsOnline updater path)
 #include "socket_compat.h"  // GeneralsX @build fbraz 10/02/2026 - Win32 Sockets → POSIX BSD sockets (WWDownload)
 //#include "intrin_compat.h"
 

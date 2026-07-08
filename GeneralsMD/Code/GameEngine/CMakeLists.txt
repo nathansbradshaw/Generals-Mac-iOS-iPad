@@ -1161,6 +1161,13 @@ if(SAGE_GENERALS_ONLINE)
         Source/GameNetwork/GeneralsOnline/*.cpp
     )
     target_sources(z_gameengine PRIVATE ${GENERALS_ONLINE_SRC})
+    # Their build resolves NGMP includes like "../NGMP_include.h" and
+    # "libcurl/curl.h" via these directories being on the include path.
+    target_include_directories(z_gameengine PUBLIC
+        Include/GameNetwork/GeneralsOnline
+        Include/GameNetwork/GeneralsOnline/HTTP
+        Include/GameNetwork/GeneralsOnline/Vendor
+    )
     find_package(GameNetworkingSockets CONFIG REQUIRED)
     find_package(CURL REQUIRED)
     target_link_libraries(z_gameengine PUBLIC

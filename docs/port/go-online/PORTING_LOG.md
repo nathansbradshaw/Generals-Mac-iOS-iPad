@@ -1,7 +1,26 @@
 # NGMP porting log (T3.2+)
 
+## T3.3 milestone status (reached — macOS, arm64, Clang)
+
+**`SAGE_GENERALS_ONLINE=ON` builds and links.** The full `z_generals`
+executable (`build/macos-vulkan/GeneralsMD/GeneralsXZH`) links with only
+pre-existing warnings (duplicate-lib, SDK-version-skew). The non-MD
+`g_gameengine` still links clean, confirming the shared-Core changes
+(Transport refactor + guarded engine additions) don't break the base game.
+
+**Boot check:** launched the ON binary; it initializes SDL3/Vulkan, creates
+its window, and runs engine subsystem init (LocalFileSystem, ArchiveFileSystem,
+WritableGlobalData) before stopping at `No files read from directory
+'Data\INI\Default\GameData'` — i.e. it gets past all NGMP static
+initialization and only halts because this machine has no retail `.big`
+assets. Booting fully to the main menu (ON and OFF) requires the user's
+retail game data and is the one remaining "Done when" step to confirm on a
+machine that has it.
+
+Themes below were burned down one commit each; see the table for status.
+
 Initial compile of the imported subtree on macOS (arm64, Clang, `SAGE_GENERALS_ONLINE=ON`)
-fails with these themes, burned down one commit each below:
+failed with these themes:
 
 1. **Relative include paths** — their build adds NGMP dirs to the include path
    so `"../NGMP_include.h"`, `"../json.hpp"`, `"libcurl/curl.h"` resolve.

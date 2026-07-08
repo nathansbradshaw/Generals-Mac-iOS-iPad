@@ -18,6 +18,19 @@ fails with these themes, burned down one commit each below:
 | Theme | Status |
 |---|---|
 | include paths | fixed |
-| Transport refactor | pending |
+| Transport refactor | fixed |
 | utc_clock | pending |
 | winhttp | pending |
+| winsock headers (`ws2ipdef.h` in NetworkMesh.h) | pending |
+| `localtime_s` (NGMP_Helpers.cpp) | pending |
+| lobby-camera-zoom defines undeclared | pending |
+
+**Transport refactor details:** did the refactor mechanically in our tree instead
+of copying their files (ours is already POSIX-ported and modernized). `Transport`
+in Core is now an abstract base (metrics + `isGeneralsPacket` stay); the UDP
+socket implementation moved verbatim to new `Core` files `UDPTransport.h/.cpp`.
+Unlike their fork (UDPTransport under GeneralsMD only), ours lives in Core so the
+non-MD Generals build keeps working — verified `g_gameengine` still links.
+Call sites switched to `new UDPTransport`: `LANAPI.cpp`, `NAT.cpp`,
+`ConnectionManager.cpp`. NextGenTransport selection in ConnectionManager is
+deliberately NOT wired yet — that's a Phase 4 hook.

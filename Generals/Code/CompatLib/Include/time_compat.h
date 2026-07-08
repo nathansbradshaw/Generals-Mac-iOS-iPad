@@ -56,6 +56,14 @@ extern "C" {
 #else
 // Linux: Stub implementation using clock_gettime(CLOCK_MONOTONIC)
 #include <time.h>
+#include <errno.h>
+
+// GeneralsX @build MSVC-style localtime_s on top of POSIX localtime_r (args are swapped)
+inline int localtime_s(struct tm* tmDest, const time_t* sourceTime) {
+    if (tmDest == nullptr || sourceTime == nullptr) return EINVAL;
+    return localtime_r(sourceTime, tmDest) != nullptr ? 0 : EINVAL;
+}
+
 inline BOOL QueryPerformanceCounter(void* lpPerformanceCount) {
     if (!lpPerformanceCount) return 0;
     struct timespec ts;

@@ -22,7 +22,7 @@ fails with these themes, burned down one commit each below:
 | utc_clock | fixed |
 | winhttp | pending |
 | winsock headers (`ws2ipdef.h` in NetworkMesh.h) | pending |
-| `localtime_s` (NGMP_Helpers.cpp) | pending |
+| `localtime_s` (NGMP_Helpers.cpp) | fixed — CompatLib shim in time_compat.h |
 | lobby-camera-zoom defines undeclared | pending |
 
 **Transport refactor details:** did the refactor mechanically in our tree instead

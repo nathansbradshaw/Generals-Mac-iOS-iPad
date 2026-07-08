@@ -42,3 +42,24 @@ NGMP HTTPManager during T3).
 Account creation flow not yet discovered — `pending_logins` suggests the
 launcher starts a login and the service completes it. Find the registration
 endpoint or seed `users` directly via SQL.
+
+## T1.4 — friends-scale auth (VERIFIED WORKING 07/2026)
+
+No launcher, no external IdP, no code changes needed:
+
+1. Seed users: `INSERT INTO users (account_type, displayname, active) VALUES (0,'<name>',1);`
+2. Mint a **refresh token** (HS256, signed with `JwtSettings.Key` from appsettings):
+   claims `sub`=<user_id>, `jti`=uuid, `name`=<displayname>, `address`=ip,
+   `typ`="1" (refresh), `client_id`="5" (custom_third_party_client),
+   `session_type`="0" (GameClient),
+   `http://schemas.microsoft.com/ws/2008/06/identity/claims/role`=["Player","GameClient"],
+   `iss`/`aud` per config, `exp`/`iat`/`nbf`. (Python stdlib mint script in git
+   history of this file's commit.)
+3. `POST /env/prod/contract/1/LoginWithToken` with `Authorization: Bearer <refresh>`,
+   JSON body `{"exe_crc":"0"}` → HTTP 200 `{result:1, session_token, refresh_token,
+   user_id, display_name, ws_uri}`.
+
+So the game client (T4.3) only needs: a stored refresh token (config/ini),
+LoginWithToken call, then session-token auth + websocket connect. Their enum
+`custom_third_party_client=5` exists precisely for clients like ours.
+Session-type enum: GameClient=0, ChatClient=1, GameLauncher=2.

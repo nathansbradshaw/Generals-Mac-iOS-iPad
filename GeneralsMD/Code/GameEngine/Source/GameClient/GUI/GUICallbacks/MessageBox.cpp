@@ -90,6 +90,11 @@ GameWindow *MessageBoxCancel(UnicodeString titleString,UnicodeString bodyString,
 	return TheWindowManager->gogoMessageBox(-1,-1,-1,-1, MSG_BOX_CANCEL, titleString, bodyString, nullptr, nullptr, nullptr, cancelCallback);
 }
 
+GameWindow *MessageBoxNoButtons(UnicodeString titleString, UnicodeString bodyString, bool bShowLogo)///< GeneralsOnline: Message box with no buttons
+{
+	return TheWindowManager->gogoMessageBox(-1, -1, -1, -1, MSG_BOX_NONE, titleString, bodyString, nullptr, nullptr, nullptr, nullptr, bShowLogo);
+}
+
 
 // PRIVATE DATA ///////////////////////////////////////////////////////////////////////////////////
 

@@ -32,8 +32,12 @@ fails with these themes, burned down one commit each below:
 | `byte` type (NextGenTransport/NetworkMesh) | fixed — CompatLib typedef |
 | `MAX_MESSAGE_LEN` constant | fixed — renamed to MAX_NETWORK_MESSAGE_LEN in NextGenTransport.cpp |
 | launcher/updater Win32 (`shellapi.h`,`ShellExecuteA`,`__declspec`,`LoadLibraryA`) | fixed — shellapi_compat.h shim, `_WIN32`-guarded GPU hints, DownloadManager::SetFileName stub added; DPAPI credential encryption gated to `_WIN32` (plaintext fallback off-Windows) |
-| GameSpyOverlay message-box variants (`GSMessageBoxNoButtons`,`GSMessageBoxCancel`) | pending — hook-point API drift |
-| StatsInterface macro `stats.##name` paste + `PSPlayerStats` elo fields | pending — non-MVP stats |
+| GameSpyOverlay message-box variants (`GSMessageBoxNoButtons`,`GSMessageBoxCancel`) | fixed — ported their GS wrappers + `MessageBoxNoButtons`/`MSG_BOX_NONE` into both MD and non-MD engines |
+| StatsInterface macro `stats.##name` paste + `PSPlayerStats` elo fields | fixed — `.##`→`.`, added `elo_rating`/`elo_num_matches` to PSPlayerStats |
+| NGMPGame countdown member drift | pending — transitive NextGenMP_defines ordering |
+| NetworkInterface `GetConnectionManager`/`SeedLatencyData`, GameLogic `IsLoadScreenActive`, ISteamNetworkingSockets `GetConnectionType` | pending — engine API drift |
+| NGMPGame/LobbyInterface signature drift ("too many arguments") | pending |
+| non-POD varargs (std::string to printf) | pending — real bug off-MSVC |
 | NetworkInterface/ConnectionManager API drift (`GetConnectionManager`,`SeedLatencyData`) | pending |
 | NGMPGame countdown member drift | pending |
 | DownloadManager/GameLogic/PSPlayerStats API drift | pending |

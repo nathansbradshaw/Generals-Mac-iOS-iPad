@@ -335,6 +335,8 @@ PSPlayerStats::PSPlayerStats( const PSPlayerStats& other )
 {
 	incorporate(other);
 	id = other.id;
+	elo_rating = other.elo_rating;
+	elo_num_matches = other.elo_num_matches;
 	locale = other.locale;
 	gamesAsRandom = other.gamesAsRandom;
 	options = other.options;
@@ -1086,6 +1088,8 @@ PSPlayerStats::PSPlayerStats()
 void PSPlayerStats::reset()
 {
 	id = 0;
+	elo_rating = 0;
+	elo_num_matches = 0;
 	locale = 0;
 	gamesAsRandom = 0;
 	lastFPS = 0;

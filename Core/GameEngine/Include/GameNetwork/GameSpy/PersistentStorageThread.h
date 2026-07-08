@@ -42,6 +42,9 @@ public:
 	void reset();
 
 	Int id;
+	// GeneralsX @feature GeneralsOnline Elo fields (ported from their GameClient PSPlayerStats)
+	Int elo_rating;
+	Int elo_num_matches;
 	PerGeneralMap wins;
 	PerGeneralMap losses;
 	PerGeneralMap games;              //first: playerTemplate #,  second: #games played (see also gamesAsRandom)

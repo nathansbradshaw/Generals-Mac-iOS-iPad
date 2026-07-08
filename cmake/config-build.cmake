@@ -24,6 +24,12 @@ endif()
 # macOS port option (Phase 5)
 option(SAGE_USE_MOLTENVK "Use MoltenVK for Vulkan on macOS (Phase 5 macOS port)" OFF)
 
+# GeneralsOnline multiplayer client (NGMP) — imported from
+# GeneralsOnlineDevelopmentTeam/GameClient, friends-scale self-hosted backend.
+# See docs/port/GENERALS_ONLINE_INTEGRATION_PLAN.md. The game must always
+# build and boot with this OFF.
+option(SAGE_GENERALS_ONLINE "GeneralsOnline multiplayer client (NGMP)" OFF)
+
 # SagePatch — optional QoL features for casual play (screenshot, cursor lock,
 # brightness, camera/scroll INI overrides). Compiles to a separate shared lib
 # that is loaded via DYLD_INSERT_LIBRARIES (macOS) / LD_PRELOAD (Linux) at runtime.

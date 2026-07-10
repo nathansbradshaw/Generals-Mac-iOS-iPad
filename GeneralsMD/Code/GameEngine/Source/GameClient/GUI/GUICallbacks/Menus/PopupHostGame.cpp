@@ -713,7 +713,32 @@ void createGame()
 	return;
 }
 
+// GeneralsX test hook (-hostAutostart): create a lobby with default settings
+// without driving the host-popup UI, so the two-client match flow can be
+// exercised headlessly (one client hosts, another sees + joins it).
+void NGMP_HostAutostartCreateLobby()
+{
+	NGMP_OnlineServices_LobbyInterface* pLobbyInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();
+	if (pLobbyInterface == nullptr)
+	{
+		return;
+	}
 
+	AsciiString defaultMap = getDefaultMap(true);
+	const MapMetaData* md = TheMapCache->findMap(defaultMap);
+	if (md == nullptr)
+	{
+		NetworkLog(ELogVerbosity::LOG_RELEASE, "[GeneralsX] -hostAutostart: no valid default map, cannot host");
+		return;
+	}
+
+	UnicodeString gameName(L"GeneralsX Autohost");
+	pLobbyInterface->CreateLobby(gameName, md->m_displayName, md->m_fileName, md->m_isOfficial,
+		md->m_numPlayers, false /*vanillaTeamsOnly*/, false /*trackStats*/,
+		TheGlobalData->m_defaultStartingCash.countMoney(), false /*passworded*/, std::string(), true /*allowObservers*/);
+
+	NetworkLog(ELogVerbosity::LOG_RELEASE, "[GeneralsX] -hostAutostart: CreateLobby('GeneralsX Autohost', map='%s') fired", defaultMap.str());
+}
 
 #else
 void createGame()

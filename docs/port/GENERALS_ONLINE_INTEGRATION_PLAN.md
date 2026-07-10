@@ -121,6 +121,11 @@ then cross-platform with Windows/Linux friends.
 ## Phase 5 — Apple↔Apple match flow
 
 - [ ] Join/host a custom match Mac↔Mac through our backend/relay.
+      *(T5.0 done: auto-join-room hang fixed. T5.1 part 1 done: NGMP
+      `SearchForLobbies`-driven game list ported into `RefreshGameListBox` —
+      entering the lobby now queries `/Lobbies` (200) and renders results
+      (name/map/players), stable. Remaining: two Mac clients — host from one,
+      see+join from the other, start, play. See PORTING_LOG.md.)*
 - [ ] Verify game-start handoff (their NextGenTransport replaces the UDP
       transport; online traffic is unicast — no broadcast issues like LAN had).
 - [ ] iOS bring-up: lifecycle (reuse the render/sim pause machinery; sockets

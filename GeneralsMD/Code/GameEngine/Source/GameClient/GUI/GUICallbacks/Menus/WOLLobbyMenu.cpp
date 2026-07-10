@@ -331,6 +331,53 @@ void SetLobbyAttemptHostJoin(Bool start)
 	s_tryingToHostOrJoin = start;
 }
 
+#if defined(SAGE_GENERALS_ONLINE)
+// Set by the -hostAutostart command-line flag: create a default lobby once the
+// custom lobby is up (test hook for the two-client match flow).
+Bool g_GeneralsXHostAutostart = FALSE;
+static Int s_hostAutostartDelay = 60;	// let the room-join settle first
+
+// Set by -joinAutostart: join the first lobby not owned by us once the custom
+// lobby is up (test hook, pairs with a -hostAutostart client).
+Bool g_GeneralsXJoinAutostart = FALSE;
+static Int s_joinAutostartDelay = 90;	// after the room-join + first lobby search
+
+// Search lobbies and join the first one not owned by the local user.
+static void NGMP_JoinAutostartJoinFirstLobby()
+{
+	NGMP_OnlineServices_LobbyInterface* pLobbyInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();
+	if (pLobbyInterface == nullptr)
+	{
+		return;
+	}
+
+	NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
+	int64_t myUserID = (pAuthInterface != nullptr) ? pAuthInterface->GetUserID() : -1;
+
+	pLobbyInterface->SearchForLobbies(
+		[]() {},
+		[pLobbyInterface, myUserID](std::vector<LobbyEntry> vecLobbies)
+		{
+			for (LobbyEntry& lobby : vecLobbies)
+			{
+				if (lobby.owner == myUserID)
+					continue;	// don't join our own
+				if (lobby.exe_crc != TheGlobalData->m_exeCRC || lobby.ini_crc != TheGlobalData->m_iniCRC)
+					continue;	// CRC must match (mirrors the join button handler)
+				if (lobby.passworded)
+					continue;
+
+				NetworkLog(ELogVerbosity::LOG_RELEASE, "[GeneralsX] -joinAutostart: joining lobby %lld ('%s')", (long long)lobby.lobbyID, lobby.name.c_str());
+				pLobbyInterface->SetLobbyTryingToJoin(lobby);
+				pLobbyInterface->JoinLobby(lobby, std::string());
+				SetLobbyAttemptHostJoin(TRUE);
+				return;
+			}
+			NetworkLog(ELogVerbosity::LOG_RELEASE, "[GeneralsX] -joinAutostart: no joinable lobby found yet");
+		});
+}
+#endif
+
 // Tooltips -------------------------------------------------------------------------------
 
 static void playerTooltip(GameWindow *window,
@@ -1974,6 +2021,37 @@ void WOLLobbyMenuUpdate( WindowLayout * layout, void *userData)
 		}		
 
 		return;
+	}
+
+	// -hostAutostart: once the lobby is up and the room-join has settled, create
+	// a default lobby so a second client can see + join it.
+	if (g_GeneralsXHostAutostart && !s_tryingToHostOrJoin)
+	{
+		if (s_hostAutostartDelay > 0)
+		{
+			--s_hostAutostartDelay;
+		}
+		else
+		{
+			g_GeneralsXHostAutostart = FALSE;	// fire once
+			extern void NGMP_HostAutostartCreateLobby();
+			NGMP_HostAutostartCreateLobby();
+		}
+	}
+
+	// -joinAutostart: once the lobby is up and a lobby search has had time to
+	// return, join the first lobby not owned by us.
+	if (g_GeneralsXJoinAutostart && !s_tryingToHostOrJoin)
+	{
+		if (s_joinAutostartDelay > 0)
+		{
+			--s_joinAutostartDelay;
+		}
+		else
+		{
+			g_GeneralsXJoinAutostart = FALSE;	// fire once
+			NGMP_JoinAutostartJoinFirstLobby();
+		}
 	}
 
 #endif // SAGE_GENERALS_ONLINE

@@ -63,6 +63,11 @@
 
 #include "Common/STLTypedefs.h"
 
+#if defined(SAGE_GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_LobbyInterface.h"
+#endif
+
 
 // PRIVATE DATA ///////////////////////////////////////////////////////////////////////////////////
 // Note: if you add more columns, you must modify the .wnd files and change the listbox properties (yuck!)
@@ -216,6 +221,16 @@ static void gameTooltip(GameWindow *window,
 	}
 
 	Int gameID = static_cast<Int>(reinterpret_cast<intptr_t>(GadgetListBoxGetItemData(window, row, 0)));
+#if defined(SAGE_GENERALS_ONLINE)
+	// GeneralsX: the NGMP lobby list is not backed by GameSpy staging rooms
+	// (TheGameSpyInfo is null), so the detailed per-row tooltip can't be built.
+	// Skip it rather than dereference null (this hung on mouse hover).
+	if (TheGameSpyInfo == nullptr)
+	{
+		TheMouse->setCursorTooltip( UnicodeString::TheEmptyString );
+		return;
+	}
+#endif
 	GameSpyStagingRoom *room = TheGameSpyInfo->findStagingRoomByID(gameID);
 	if (!room)
 	{
@@ -690,10 +705,133 @@ static Int insertGame( GameWindow *win, GameSpyStagingRoom *game, Bool showMap )
 	return index;
 }
 
+#if defined(SAGE_GENERALS_ONLINE)
+// GeneralsX T5.1: classify a lobby's game mode from its name, for the lobby
+// filter combo. Ported verbatim from the GeneralsOnline fork.
+static LobbyGameModeFilter detectGameMode(const std::string& name)
+{
+	std::string modeName = name;
+	std::transform(modeName.begin(), modeName.end(), modeName.begin(), tolower);
+
+	// remove spaces
+	modeName.erase(std::remove(modeName.begin(), modeName.end(), ' '), modeName.end());
+
+	// handle common variations
+	for (size_t i = 0; i < modeName.size(); ++i)
+	{
+		if (modeName.compare(i, 2, "vs") == 0)
+		{
+			modeName.erase(i + 1, 1);
+			continue;
+		}
+
+		if (modeName[i] == 'x')
+			modeName[i] = 'v';
+	}
+
+	if (modeName.find("aod") != std::string::npos)
+		return LOBBY_FILTER_AOD;
+	if (modeName.find("ffa") != std::string::npos || modeName.find("1v1v1") != std::string::npos)
+		return LOBBY_FILTER_FFA;
+	if (modeName.find("1v1") != std::string::npos)
+		return LOBBY_FILTER_1V1;
+	if (modeName.find("2v2") != std::string::npos || modeName.find("3v3") != std::string::npos || modeName.find("4v4") != std::string::npos)
+		return LOBBY_FILTER_TEAM;
+
+	return LOBBY_FILTER_ALL;
+}
+#endif // SAGE_GENERALS_ONLINE
+
 void RefreshGameListBox( GameWindow *win, Bool showMap )
 {
 	if (!win)
 		return;
+
+#if defined(SAGE_GENERALS_ONLINE)
+	// GeneralsX T5.1: render the NGMP backend lobby list. Their fork rewrites
+	// this together with insertGame/GameSortStruct/populateBuddyGames (~700
+	// lines). This is a focused port that populates the essential columns
+	// (name / map / players) from SearchForLobbies so hosted games are visible
+	// and joinable; full-fidelity columns, sorting and buddy-highlighting are a
+	// later enhancement. Item data column 0 = lobbyID, read by the join path
+	// (see the LobbyClicked handler's GetLobbyFromID call).
+	NGMP_OnlineServices_LobbyInterface* pLobbyInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();
+	if (pLobbyInterface == nullptr)
+	{
+		return;
+	}
+
+	// save off selection
+	Int selectedIndex = -1;
+	Int selectedID = 0;
+	GadgetListBoxGetSelected(win, &selectedIndex);
+	if (selectedIndex != -1)
+	{
+		selectedID = static_cast<Int>(reinterpret_cast<intptr_t>(GadgetListBoxGetItemData(win, selectedIndex)));
+	}
+	int prevPos = GadgetListBoxGetTopVisibleEntry(win);
+
+	pLobbyInterface->SearchForLobbies(
+		[=]()
+		{
+			win->winEnable(false);
+			GadgetListBoxAddEntryText(win, UnicodeString(L"Searching for lobbies..."), GameMakeColor(255, 194, 15, 255), -1, -1);
+		},
+		[=](std::vector<LobbyEntry> vecLobbies)
+		{
+			GadgetListBoxReset(win);
+
+			// filter by game mode
+			if (theLobbyFilter != LOBBY_FILTER_ALL)
+			{
+				std::vector<LobbyEntry> filtered;
+				for (LobbyEntry& lobby : vecLobbies)
+				{
+					if (detectGameMode(lobby.name) == theLobbyFilter)
+						filtered.push_back(lobby);
+				}
+				vecLobbies.swap(filtered);
+			}
+
+			if (vecLobbies.empty())
+			{
+				win->winEnable(false);
+				GadgetListBoxAddEntryText(win, UnicodeString(L"No lobbies were found"), GameMakeColor(255, 194, 15, 255), -1, -1);
+				return;
+			}
+
+			win->winEnable(true);
+			Int indexToSelect = -1;
+			Color gameColor = GameSpyColor[GSCOLOR_GAME];
+			for (LobbyEntry& lobby : vecLobbies)
+			{
+				UnicodeString gameName;
+				gameName.set(from_utf8(lobby.name).c_str());
+				Int index = GadgetListBoxAddEntryText(win, gameName, gameColor, -1, COLUMN_NAME);
+
+				UnicodeString mapName;
+				mapName.set(from_utf8(lobby.map_name).c_str());
+				GadgetListBoxAddEntryText(win, mapName, gameColor, index, COLUMN_MAP);
+
+				UnicodeString players;
+				players.format(L"%d/%d", lobby.current_players, lobby.max_players);
+				GadgetListBoxAddEntryText(win, players, gameColor, index, COLUMN_NUMPLAYERS);
+
+				Int gameID = (Int)lobby.lobbyID;
+				GadgetListBoxSetItemData(win, reinterpret_cast<void*>(static_cast<intptr_t>(gameID)), index);
+
+				if (gameID == selectedID)
+					indexToSelect = index;
+			}
+
+			GadgetListBoxSetSelected(win, indexToSelect);
+			GadgetListBoxSetTopVisibleEntry(win, prevPos);
+			if (indexToSelect < 0 && selectedID)
+			{
+				TheWindowManager->winSetLoneWindow(nullptr);
+			}
+		});
+#else
 
 	// save off selection
 	Int selectedIndex = -1;
@@ -745,6 +883,7 @@ void RefreshGameListBox( GameWindow *win, Bool showMap )
 	{
 		TheWindowManager->winSetLoneWindow(nullptr);
 	}
+#endif // SAGE_GENERALS_ONLINE
 }
 
 void RefreshGameInfoListBox( GameWindow *mainWin, GameWindow *win )

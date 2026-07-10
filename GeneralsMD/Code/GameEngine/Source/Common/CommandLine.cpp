@@ -441,6 +441,30 @@ Int parseOnlineAutostart(char *args[], int num)
 	g_GeneralsXOnlineAutostart = TRUE;
 	return 1;
 }
+
+// GeneralsX test hook: after auto-login reaches the custom lobby, create a
+// default lobby (host) without the popup UI. Implies -onlineAutostart. Lets a
+// second client see + join the hosted game. See WOLLobbyMenu.cpp.
+Int parseHostAutostart(char *args[], int num)
+{
+	extern Bool g_GeneralsXOnlineAutostart;
+	extern Bool g_GeneralsXHostAutostart;
+	g_GeneralsXOnlineAutostart = TRUE;
+	g_GeneralsXHostAutostart = TRUE;
+	return 1;
+}
+
+// GeneralsX test hook: after auto-login reaches the custom lobby, join the first
+// available lobby not owned by us. Implies -onlineAutostart. Pairs with a
+// -hostAutostart client to exercise the join + match-start flow. See WOLLobbyMenu.cpp.
+Int parseJoinAutostart(char *args[], int num)
+{
+	extern Bool g_GeneralsXOnlineAutostart;
+	extern Bool g_GeneralsXJoinAutostart;
+	g_GeneralsXOnlineAutostart = TRUE;
+	g_GeneralsXJoinAutostart = TRUE;
+	return 1;
+}
 #endif
 
 Int parseReplay(char *args[], int num)
@@ -1165,6 +1189,8 @@ static CommandLineParam paramsForStartup[] =
 
 #if defined(SAGE_GENERALS_ONLINE)
 	{ "-onlineAutostart", parseOnlineAutostart },
+	{ "-hostAutostart", parseHostAutostart },
+	{ "-joinAutostart", parseJoinAutostart },
 #endif
 
 	// TheSuperHackers @feature helmutbuhler 13/04/2025

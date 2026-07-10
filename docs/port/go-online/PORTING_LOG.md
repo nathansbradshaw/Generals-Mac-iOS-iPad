@@ -184,3 +184,118 @@ default room to populate the per-room staging/game list; sampling shows the
 join-complete callback (`RoomsInterface::JoinRoom` → WOLLobbyMenuInit lambda)
 pinned — that room-join/game-list population is where Phase 5 (join/host a match)
 begins.
+
+## Phase 5 — T5.0 auto-join-room hang (2026-07-10)
+
+On entering the custom lobby the client auto-joins the default room, whose
+completion callback calls `RefreshGameListBox` (Core LobbyUtils.cpp). That
+function builds the game list from `TheGameSpyInfo->getStagingRoomList()` — null
+in the NGMP flow — so it hung (virtual call through null). Sampling pinned it at
+`RoomsInterface::JoinRoom` → WOLLobbyMenuInit lambda → `RefreshGameListBox`
+(LobbyUtils.cpp:716).
+
+Their fork replaces `RefreshGameListBox` wholesale with an NGMP
+`SearchForLobbies`-driven version (operating on `LobbyEntry`, with
+`detectGameMode` / `GameSortStruct<LobbyEntry>` / `populateBuddyGames(vector)` /
+`insertGame(LobbyEntry)` helpers). Porting that whole subsystem is **T5.1** (it's
+what actually renders joinable games). For T5.0, guarded `RefreshGameListBox` to
+reset the listbox and return when `TheGameSpyInfo == nullptr`, so the lobby is
+reachable and stable (empty game list) instead of hanging. Verified: client
+reaches `WOLCustomLobby.wnd`, fetches `Rooms` (200), and sits in the normal
+`GameEngine::update()` loop — no hang.
+
+Note: re-running the whole-file merge_guard on LobbyUtils.cpp did not work
+cleanly because HEAD already contains the partial T4 port of this file (committed
+in `39ed98a5`), so the 3-way merge double-applied `theLobbyFilter`/helpers. The
+T5.1 NGMP game-list port should be done as targeted per-function edits, not a
+whole-file re-merge.
+
+## Phase 5 — T5.1 (part 1): NGMP game-list rendering (2026-07-10)
+
+Ported the NGMP-driven custom-lobby game list into Core `LobbyUtils.cpp`
+(`RefreshGameListBox`). Their fork rewrites this together with
+`insertGame`/`GameSortStruct`/`populateBuddyGames` (~700 lines) to render
+backend lobbies; a whole-file merge is not viable here (HEAD already carries the
+partial T4 port of this file, so a 3-way re-merge double-applies symbols — see
+T5.0 note). Instead this is a **focused, self-contained port**:
+
+- Guarded NGMP includes (`NGMP_interfaces.h`, `OnlineServices_LobbyInterface.h`)
+  under `#if defined(SAGE_GENERALS_ONLINE)` — the upstream file includes these
+  unguarded, which would break our OFF build.
+- `detectGameMode()` ported verbatim (lobby-name → `LobbyGameModeFilter`, used
+  by the room filter).
+- `RefreshGameListBox` restructured as `#if SAGE (NGMP) #else (GameSpy) #endif`.
+  The NGMP branch calls `pLobbyInterface->SearchForLobbies(startCb, resultCb)`
+  and, in the result callback, applies the game-mode filter then populates the
+  essential columns (name / map / players) with item-data column 0 = lobbyID
+  (read by the join path via `GetLobbyFromID`). Full-fidelity columns (ladder,
+  password/observer/stats icons, ping), sorting and buddy-highlighting are a
+  later enhancement — the 358-line `insertGame` was intentionally not ported.
+- OFF path is byte-identical to HEAD (verified with `unifdef -USAGE_GENERALS_ONLINE`).
+
+Verified end-to-end: entering the custom lobby fires `SearchForLobbies` →
+`GET /Lobbies` → 200 `{"lobbies":[]}`; the list renders "No lobbies were found"
+and the client stays in the normal `GameEngine::update()` loop (no hang/crash).
+The list is empty only because nothing is hosted yet — populated-row rendering
+and host/join are exercised by the remaining T5.1 two-client match test.
+
+## Phase 5 — T5.1 (part 2): two-client lobby discovery (2026-07-10)
+
+Added a `-hostAutostart` test hook (mirrors `-onlineAutostart`; implies it):
+after auto-login reaches the custom lobby, `NGMP_HostAutostartCreateLobby()`
+(PopupHostGame.cpp) calls `LobbyInterface::CreateLobby` with default settings
+(default map, name "GeneralsX Autohost") without driving the host-popup UI.
+Triggered once from `WOLLobbyMenuUpdate` after a short settle delay. All guarded
+`SAGE_GENERALS_ONLINE`; OFF byte-identical to HEAD.
+
+Verified two-client discovery on one machine against the self-hosted backend
+(three seeded accounts: nathan 34621, friend1 34622, viewer 34623):
+
+1. Host (nathan) `-hostAutostart` → `POST /Lobbies` + `/Lobby/0` (200): backend
+   created lobby id 0, "generalsx autohost", map alpine assault, 1/2 players,
+   host in slot 0. Host stays in the staging room.
+2. Viewer (friend1) `-onlineAutostart` → its `SearchForLobbies` → `/Lobbies`
+   (200) returned the hosted lobby in the results; the ported NGMP
+   `RefreshGameListBox` consumed the non-empty `LobbyEntry` list and rendered
+   the row without crashing (viewer stayed in the normal update loop).
+
+This closes the "see the lobby list" half of T5.1 with real data across two
+independent logins. Remaining T5.1: viewer JOINs the lobby (JoinLobby), both
+ready-up, match start + NextGenTransport handoff, play. (GUI screenshot not
+capturable in this headless session; verification is via backend responses +
+process stability.)
+
+## Phase 5 — T5.1 (part 3): join + staging room + ready (2026-07-10)
+
+Added a `-joinAutostart` test hook (implies `-onlineAutostart`): once the custom
+lobby is up, `NGMP_JoinAutostartJoinFirstLobby()` (WOLLobbyMenu.cpp) searches
+lobbies and joins the first one not owned by the local user (CRC-checked,
+non-passworded), mirroring the Join-button handler.
+
+Two-client match sequence verified against the self-hosted backend (nathan
+34621 hosts, friend1 34622 joins):
+- Host `-hostAutostart` → lobby created; **friend1 sees the row rendered in the
+  game list** (confirmed visually — name / map "Alpine Assault (2)" / "1/2").
+- friend1 `-joinAutostart` → `POST /Lobby/N` join → `[NGMP] Joined lobby`;
+  backend `numcurrentplayers:2`, both members present (nathan slot 0, friend1
+  slot 1). Both clients reach the staging room (WOLGameSetupMenu).
+- **Both players ready up** — backend shows nathan + friend1 `isready:true`,
+  start positions assigned (0 / 1). The client "Accept" is the Start button
+  relabeled (host → StartPressed, client → `localSlot->setAccept()` +
+  `ApplyLocalUserPropertiesToCurrentNetworkRoom` → `SendData_MarkReady`).
+
+Hangs fixed along the way (all the null-`TheGameSpyInfo` pattern in the NGMP
+flow, all guarded `SAGE_GENERALS_ONLINE`, OFF byte-identical to HEAD):
+- `gameTooltip` (LobbyUtils.cpp) — hovering a game-list row dereferenced null
+  `TheGameSpyInfo->findStagingRoomByID`; guarded to skip the tooltip. (This was
+  the beachball that blocked clicking Accept.)
+- `CustomMatchPreferences` / `GameSpyMiscPreferences` / `IgnorePreferences` /
+  `QuickMatchPreferences` ctors (UserPreferences.cpp) — keyed the prefs filename
+  off `TheGameSpyInfo->getLocalProfileID()`; now use the online user id from the
+  auth interface (CustomMatch also creates its GeneralsOnlineData folder), which
+  fixed the staging-room-entry hang.
+
+Remaining T5.1: host presses Start → `SendData_StartGame` → NextGenTransport /
+NetworkMesh handoff → actual in-match play (5 min) → clean exit. That transport
+handoff is the next milestone (Phase 5 "game-start handoff" bullet) and is
+untested so far.

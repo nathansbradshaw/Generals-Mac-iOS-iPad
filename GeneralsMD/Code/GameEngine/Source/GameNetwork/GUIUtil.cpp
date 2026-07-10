@@ -222,7 +222,17 @@ void PopulateColorComboBox(Int comboBox, GameWindow *comboArray[], GameInfo *myG
 		if (!def || availableColors[c] == false)
 			continue;
 
+#if defined(SAGE_GENERALS_ONLINE)
+		bool bFoundColorName = false;
+		colorName = TheGameText->fetch(def->getTooltipName().str(), &bFoundColorName);
+
+		if (!bFoundColorName) // use raw instead
+		{
+			colorName.format(L"%hs", def->getTooltipName().str());
+		}
+#else
 		colorName = TheGameText->fetch(def->getTooltipName().str());
+#endif
 		newIndex = GadgetComboBoxAddEntry(comboArray[comboBox], colorName, def->getColor());
 		GadgetComboBoxSetItemData(comboArray[comboBox], newIndex, (void *)c);
 	}
@@ -292,6 +302,30 @@ void PopulatePlayerTemplateComboBox(Int comboBox, GameWindow *comboArray[], Game
 
 // -----------------------------------------------------------------------------
 
+#if defined(SAGE_GENERALS_ONLINE)
+// team colors for UI (team combo + minimap start positions).
+UnsignedInt GetTeamUiColor(Int teamNumber)
+{
+    switch (teamNumber)
+    {
+        case 0:
+            return GameMakeColor(255, 60, 60, 255);   // Red
+
+        case 1:
+            return GameMakeColor(60, 255, 60, 255);   // Green
+
+        case 2:
+            return GameMakeColor(60, 120, 255, 255);  // Blue
+
+        case 3:
+            return GameMakeColor(255, 220, 60, 255);  // Yellow
+    }
+
+    // Default: white (none) 
+    return GameMakeColor(255, 255, 255, 255);
+}
+
+#endif // SAGE_GENERALS_ONLINE
 void PopulateTeamComboBox(Int comboBox, GameWindow *comboArray[], GameInfo *myGame, Bool isObserver)
 {
 	Int numTeams = MAX_SLOTS/2;
@@ -314,10 +348,17 @@ void PopulateTeamComboBox(Int comboBox, GameWindow *comboArray[], GameInfo *myGa
 		AsciiString teamStr;
 		teamStr.format("Team:%d", c + 1);
 		teamName = TheGameText->fetch(teamStr.str());
+#if defined(SAGE_GENERALS_ONLINE)
+        UnsignedInt teamColor = GetTeamUiColor(c);
+        newIndex = GadgetComboBoxAddEntry(comboArray[comboBox],teamName,teamColor);
+		GadgetComboBoxSetItemData(comboArray[comboBox], newIndex, (void *)c);
+	}
+#else
 		newIndex = GadgetComboBoxAddEntry(comboArray[comboBox], teamName, def->getColor());
 		GadgetComboBoxSetItemData(comboArray[comboBox], newIndex, (void *)c);
 	}
 	GadgetComboBoxSetSelectedPos(comboArray[comboBox], 0);
+#endif
 }
 
 // -----------------------------------------------------------------------------
@@ -352,6 +393,15 @@ void PopulateStartingCashComboBox(GameWindow *comboBox, GameInfo *myGame)
 			currentSelectionIndex = newIndex;
 		}
 	}
+#if defined(SAGE_GENERALS_ONLINE)
+
+  // NGMP: safety
+  // TODO_NGMP: Why can we get in here with no data during lobby creation? async?
+  if (myGame->getStartingCash().countMoney() == 0)
+  {
+	  currentSelectionIndex = 0;
+  }
+#endif // SAGE_GENERALS_ONLINE
 
   if ( currentSelectionIndex == -1 )
   {
@@ -460,6 +510,11 @@ void UpdateSlotList( GameInfo *myGame, GameWindow *comboPlayer[],
 				GadgetComboBoxSetSelectedPos(comboPlayer[i], slot->getState(), TRUE);
         if( buttonAccept &&  buttonAccept[i] )
 				  buttonAccept[i]->winHide(TRUE);
+#if defined(SAGE_GENERALS_ONLINE)
+
+				// NGMP: Support host migration, names can change for non-human occupied slots during migration
+				GadgetComboBoxSetText(comboPlayer[i], slot->getName());
+#endif // SAGE_GENERALS_ONLINE
 			}
 /*
 			if (myGame->getLocalSlotNum() == i && i!=0)

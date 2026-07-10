@@ -122,6 +122,13 @@
 
 struct QuitGameException {};
 
+#if defined(SAGE_GENERALS_ONLINE)
+#include "../ngmp_include.h"
+#include "../ngmp_interfaces.h"
+
+#include "../NextGenMP_defines.h"
+
+#endif // SAGE_GENERALS_ONLINE
 DECLARE_PERF_TIMER(SleepyMaintenance)
 
 #include "Common/UnitTimings.h" //Contains the DO_UNIT_TIMINGS define jba.
@@ -223,6 +230,11 @@ void setFPMode()
 	newVal = (newVal & ~_MCW_PC) | (_PC_24   & _MCW_PC);
 
 	_controlfp(newVal, _MCW_PC | _MCW_RC);
+#if defined(SAGE_GENERALS_ONLINE)
+
+	unsigned int cw;
+	_controlfp_s(&cw, _MCW_EM, _MCW_EM);
+#endif // SAGE_GENERALS_ONLINE
 	#else
 	fesetenv(FE_DFL_ENV);
 	feclearexcept(FE_ALL_EXCEPT);
@@ -282,6 +294,10 @@ GameLogic::GameLogic()
 	{
 		m_progressComplete[i] = FALSE;
 		m_progressCompleteTimeout[i] = 0;
+#if defined(SAGE_GENERALS_ONLINE)
+
+		m_progressMade[i] = 0;
+#endif // SAGE_GENERALS_ONLINE
 	}
 
 	m_shouldValidateCRCs = FALSE;
@@ -290,6 +306,12 @@ GameLogic::GameLogic()
 
 	m_frame = 0;
 	m_hasUpdated = FALSE;
+#if defined(SAGE_GENERALS_ONLINE)
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	m_frameLegacy = 0;
+	m_frameLegacyLast = 0;
+#endif
+#endif // SAGE_GENERALS_ONLINE
 	m_frameObjectsChangedTriggerAreas = 0;
 	m_width = 0;
 	m_height = 0;
@@ -317,6 +339,42 @@ GameLogic::GameLogic()
 	m_loadingSave = FALSE;
 	m_clearingGameData = FALSE;
 	m_quitToDesktopAfterMatch = FALSE;
+#if defined(SAGE_GENERALS_ONLINE)
+}
+
+// ------------------------------------------------------------------------------------------------
+/** Utility function to set class variables to default values. */
+// ------------------------------------------------------------------------------------------------
+void GameLogic::setDefaults(Bool loadingSaveGame)
+{
+	m_frame = 0;
+	m_hasUpdated = FALSE;
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	m_frameLegacy = 0;
+	m_frameLegacyLast = 0;
+#endif
+	m_width = DEFAULT_WORLD_WIDTH;
+	m_height = DEFAULT_WORLD_HEIGHT;
+	m_objList = NULL;
+#ifdef ALLOW_NONSLEEPY_UPDATES
+	m_normalUpdates.clear();
+#endif
+	for (std::vector<UpdateModulePtr>::iterator it = m_sleepyUpdates.begin(); it != m_sleepyUpdates.end(); ++it)
+	{
+		(*it)->friend_setIndexInLogic(-1);
+	}
+	m_sleepyUpdates.clear();
+	m_curUpdateModule = NULL;
+
+	//
+	// only reset the next object ID allocater counter when we're not loading a save game.
+	// for save games, we read this value out of the save game file and it is important
+	// that we preserve it as we load and execute the game
+	//
+	if (loadingSaveGame == FALSE)
+		m_nextObjID = (ObjectID)1;
+
+#endif // SAGE_GENERALS_ONLINE
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -350,6 +408,20 @@ void GameLogic::destroyAllObjectsImmediate()
 		nextObj = obj->getNextObject();
 		destroyObject( obj );
 	}
+#if defined(SAGE_GENERALS_ONLINE)
+
+	// Bulk-clear the sleepy update heap before processing the destroy list.
+	// During mass object destruction, the object destructor chain (e.g. setTeam -> onCapture ->
+	// setWakeFrame) can trigger rebalanceSleepyUpdate for still-live objects while the heap is
+	// in an intermediate state, causing a crash inside rebalanceChildSleepyUpdate.
+	// Clearing up front sets all module indices to -1 so that any setWakeFrame calls from
+	// destructor chains safely no-op, and processDestroyList skips per-element heap removal.
+	for (std::vector<UpdateModulePtr>::iterator it = m_sleepyUpdates.begin(); it != m_sleepyUpdates.end(); ++it)
+	{
+		(*it)->friend_setIndexInLogic(-1);
+	}
+	m_sleepyUpdates.clear();
+#endif // SAGE_GENERALS_ONLINE
 
 	// process the destroy list immediately
 	processDestroyList();
@@ -410,6 +482,11 @@ void GameLogic::init()
 
 	setFPMode();
 
+#if defined(SAGE_GENERALS_ONLINE)
+	/// @todo Clear object and destroy lists
+	setDefaults(FALSE);
+
+#endif // SAGE_GENERALS_ONLINE
 	// create the partition manager
 	ThePartitionManager = NEW PartitionManager;
 	ThePartitionManager->init();
@@ -436,8 +513,38 @@ void GameLogic::init()
 	// create a team for the player
 	//DEBUG_ASSERTCRASH(ThePlayerList, ("null ThePlayerList"));
 	//ThePlayerList->setLocalPlayer(0);
+#if defined(SAGE_GENERALS_ONLINE)
+
+	m_CRC = 0;
+	m_pauseFrame = 0;
+	m_gamePaused = FALSE;
+	m_pauseSound = FALSE;
+	m_pauseMusic = FALSE;
+	m_pauseInput = FALSE;
+	m_inputEnabledMemory = TRUE;
+	m_mouseVisibleMemory = TRUE;
+	m_logicTimeScaleEnabledMemory = FALSE;
+
+	for (Int i = 0; i < MAX_SLOTS; ++i)
+	{
+		m_progressComplete[i] = FALSE;
+		m_progressCompleteTimeout[i] = 0;
+	}
+	m_forceGameStartByTimeOut = FALSE;
+
+	m_isScoringEnabled = TRUE;
+	m_showBehindBuildingMarkers = TRUE;
+	m_drawIconUI = TRUE;
+	m_showDynamicLOD = TRUE;
+	m_scriptHulkMaxLifetimeOverride = -1;
+
+	m_isInUpdate = FALSE;
+
+	m_rankPointsToAddAtGameStart = 0;
+#else
 	reset();
 	m_isInUpdate = FALSE;
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -483,6 +590,10 @@ void GameLogic::reset()
 	{
 		m_progressComplete[i] = FALSE;
 		m_progressCompleteTimeout[i] = 0;
+#if defined(SAGE_GENERALS_ONLINE)
+
+		m_progressMade[i] = 0;
+#endif // SAGE_GENERALS_ONLINE
 	}
 	m_forceGameStartByTimeOut = FALSE;
 
@@ -492,6 +603,9 @@ void GameLogic::reset()
 	// clear any table of contents we have
 	m_objectTOC.clear();
 
+#if defined(SAGE_GENERALS_ONLINE)
+	setDefaults(FALSE);
+#else
 	m_frame = 0;
 	m_hasUpdated = FALSE;
 	m_width = DEFAULT_WORLD_WIDTH;
@@ -506,6 +620,7 @@ void GameLogic::reset()
 	}
 	m_sleepyUpdates.clear();
 	m_curUpdateModule = nullptr;
+#endif
 
 	m_isScoringEnabled = TRUE;
 	m_showBehindBuildingMarkers = TRUE;
@@ -900,12 +1015,38 @@ static void populateRandomStartPosition( GameInfo *game )
 		if (!slot || !slot->isOccupied() || slot->getPlayerTemplate() == PLAYERTEMPLATE_OBSERVER)
 			continue;
 
+#if defined(SAGE_GENERALS_ONLINE)
+#if defined(GENERALS_ONLINE_IBRA_STARTING_POS_LOGIC)
+		Int posIdx = slot->getStartPos();
+		if (posIdx >= 0 && posIdx < numPlayers)
+		{
+            if (taken[posIdx])
+			{
+				// Duplicate explicit start position: mark as random so it gets reassigned
+				slot->setStartPos(-1);
+			}
+			else
+			{
+			hasStartSpotBeenPicked = TRUE;
+			taken[posIdx] = TRUE;
+            }
+		}
+#else
 		Int posIdx = slot->getStartPos();
 		if (posIdx >= 0 || posIdx >= numPlayers)
 		{
 			hasStartSpotBeenPicked = TRUE;
 			taken[posIdx] = TRUE;
 		}
+#endif
+#else
+		Int posIdx = slot->getStartPos();
+		if (posIdx >= 0 || posIdx >= numPlayers)
+		{
+			hasStartSpotBeenPicked = TRUE;
+			taken[posIdx] = TRUE;
+		}
+#endif
 	}
 
 #if 0  //GS  The old way puts everyone as far apart as possible.
@@ -1011,7 +1152,12 @@ static void populateRandomStartPosition( GameInfo *game )
 			taken[posIdx] = TRUE;
 			if( team > -1 )
 				teamPosIdx[team] = posIdx;  //remember where this team is
+#if defined(SAGE_GENERALS_ONLINE)
+		}
+		else
+#else
 		} else
+#endif
 		{	//pick teams far apart, team members close together
 			if( team < 0  ||  teamPosIdx[ team ] == -1 )  //if team None or team not yet placed
 			{	//pick position furthest from all other teams
@@ -1066,7 +1212,11 @@ static void populateRandomStartPosition( GameInfo *game )
 						closestIdx = n;
 					}
 				}
+#if defined(SAGE_GENERALS_ONLINE)
+				DEBUG_ASSERTCRASH(closestDist < FLT_MAX, ("Couldn't find a closest starting positon!"));
+#else
 				DEBUG_ASSERTCRASH( closestDist < FLT_MAX, ("Couldn't find a closest starting position!"));
+#endif
 				slot->setStartPos(closestIdx);
 				taken[closestIdx] = TRUE;
 			}
@@ -1188,6 +1338,13 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	m_frame = 0;
 	m_hasUpdated = FALSE;
 
+#if defined(SAGE_GENERALS_ONLINE)
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	m_frameLegacy = 0;
+	m_frameLegacyLast = 0;
+#endif
+
+#endif // SAGE_GENERALS_ONLINE
 #ifdef DEBUG_CRC
 	// TheSuperHackers @info helmutbuhler 04/09/2025
 	// Let CRC Logger know that a new game was started.
@@ -1256,37 +1413,70 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	TheWritableGlobalData->m_loadScreenRender = TRUE;	///< mark it so only a few select things are rendered during load
 	TheWritableGlobalData->m_TiVOFastMode = FALSE;	//always disable the TIVO fast-forward mode at the start of a new game.
 
+#if defined(SAGE_GENERALS_ONLINE)
+	m_showBehindBuildingMarkers = TRUE;
+	m_drawIconUI = TRUE;
+	m_showDynamicLOD = TRUE;
+	m_scriptHulkMaxLifetimeOverride = -1;
+
+#endif // SAGE_GENERALS_ONLINE
 	Campaign* currentCampaign = TheCampaignManager->getCurrentCampaign();
 	Bool isChallengeCampaign = m_gameMode == GAME_SINGLE_PLAYER && currentCampaign && currentCampaign->m_isChallengeCampaign;
 
 	// Fill in the game color and Factions before we do the Load Screen
+#if defined(SAGE_GENERALS_ONLINE)
+	GameInfo* game = NULL;
 	TheGameInfo = nullptr;
+	Int localSlot = 0;
+#else
+	TheGameInfo = nullptr;
+#endif
 	if (TheNetwork)
 	{
 		if (TheLAN)
 		{
 			DEBUG_LOG(("Starting network game"));
+#if defined(SAGE_GENERALS_ONLINE)
+			TheGameInfo = game = TheLAN->GetMyGame();
+#else
 			TheGameInfo = TheLAN->GetMyGame();
+#endif
 		}
 		else
 		{
 			DEBUG_LOG(("Starting gamespy game"));
+#if defined(SAGE_GENERALS_ONLINE)
+			TheGameInfo = game = TheNGMPGame;	/// @todo: MDC add back in after demo
+#else
 			TheGameInfo = TheGameSpyGame;	/// @todo: MDC add back in after demo
+#endif
 		}
 	}
 	else
 	{
 		if (TheRecorder && TheRecorder->isPlaybackMode())
 		{
+#if defined(SAGE_GENERALS_ONLINE)
+			TheGameInfo = game = TheRecorder->getGameInfo();
+#else
 			TheGameInfo = TheRecorder->getGameInfo();
+#endif
 		}
 		else if(m_gameMode == GAME_SKIRMISH)
 		{
+#if defined(SAGE_GENERALS_ONLINE)
+			TheGameInfo = game = TheSkirmishGameInfo;
+#else
 		  TheGameInfo = TheSkirmishGameInfo;
+#endif
 		}
 		else if(isChallengeCampaign)
 		{
+#if defined(SAGE_GENERALS_ONLINE)
+			TheGameInfo = game = TheChallengeGameInfo;
+#else
 			TheGameInfo = TheChallengeGameInfo;
+#endif
 		}
 	}
 
@@ -1306,14 +1496,25 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
     }
   }
 
+#if defined(SAGE_GENERALS_ONLINE)
+	checkForDuplicateColors(game);
+
+	Bool isSkirmishOrSkirmishReplay = FALSE;
+	if (game)
+#else
 	checkForDuplicateColors( TheGameInfo );
 
 	Bool isSkirmishOrSkirmishReplay = FALSE;
 	if (TheGameInfo)
+#endif
 	{
 		for (Int i=0; i<MAX_SLOTS; ++i)
 		{
+#if defined(SAGE_GENERALS_ONLINE)
+			GameSlot* slot = game->getSlot(i);
+#else
 			GameSlot *slot = TheGameInfo->getSlot(i);
+#endif
 			if (!loadingSaveGame) {
 				if (slot->hasSavedOriginalSetup())
 				{
@@ -1333,17 +1534,30 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 			if (slot->isAI())
 			{
 				isSkirmishOrSkirmishReplay = TRUE;
+#if defined(SAGE_GENERALS_ONLINE)
+				continue;
+			}
+		}
+	}
+	else {
+#else
 			}
 		}
 	} else {
+#endif
 		if (m_gameMode == GAME_SINGLE_PLAYER)	{
 			delete TheSkirmishGameInfo;
 			TheSkirmishGameInfo = nullptr;
 		}
 	}
 
+#if defined(SAGE_GENERALS_ONLINE)
+	populateRandomSideAndColor(game);
+	populateRandomStartPosition(game);
+#else
 	populateRandomSideAndColor( TheGameInfo );
 	populateRandomStartPosition( TheGameInfo );
+#endif
 
 	//****************************//
 	// Start the LoadScreen Now!	//
@@ -1356,7 +1570,11 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		if(m_loadScreen)
 		{
 			TheMouse->setVisibility(FALSE);
+#if defined(SAGE_GENERALS_ONLINE)
+			m_loadScreen->init(game);
+#else
 			m_loadScreen->init(TheGameInfo);
+#endif
 
 			updateLoadProgress( LOAD_PROGRESS_START );
 		}
@@ -1378,6 +1596,12 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	DEBUG_ASSERTCRASH(m_frame == 0, ("framecounter expected to be 0 here"));
 
+#if defined(SAGE_GENERALS_ONLINE)
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	DEBUG_ASSERTCRASH(m_frameLegacy == 0, ("framecounter expected to be 0 here\n"));
+	DEBUG_ASSERTCRASH(m_frameLegacyLast == 0, ("framecounter expected to be 0 here\n"));
+#endif
+#endif // SAGE_GENERALS_ONLINE
 	// before loading the map, load the map.ini file in the same directory.
 	loadMapINI( TheGlobalData->m_mapName );
 
@@ -1397,9 +1621,14 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	DEBUG_LOG(("%s", Buf));
 	#endif
 
+#if defined(SAGE_GENERALS_ONLINE)
+	Int progressCount = LOAD_PROGRESS_SIDE_POPULATION;
+	if (game)
+#else
 	Int localSlot = 0;
 	Int progressCount = LOAD_PROGRESS_SIDE_POPULATION;
 	if (TheGameInfo)
+#endif
 	{
 
 		if (TheGameEngine->isMultiplayerSession() || isSkirmishOrSkirmishReplay)
@@ -1409,21 +1638,34 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		}
 
 		//DEBUG_LOG(("Starting LAN game with %d players", game->getNumPlayers()));
+#if defined(SAGE_GENERALS_ONLINE)
+		Dict d;
+#endif // SAGE_GENERALS_ONLINE
 		for (int i=0; i<MAX_SLOTS; ++i)
 		{
 			// Add a Side to TheSidesList
+#if defined(SAGE_GENERALS_ONLINE)
+			GameSlot* slot = game->getSlot(i);
+#else
 			GameSlot *slot = TheGameInfo->getSlot(i);
+#endif
 
 			if (!slot || !slot->isHuman())
 			{
 				m_progressComplete[i] = TRUE;
+#if defined(SAGE_GENERALS_ONLINE)
+
+				m_progressMade[i] = 100;
+#endif // SAGE_GENERALS_ONLINE
 				lastHeardFrom(i);
 			}
 
 			if (!slot || !slot->isOccupied())
 				continue;
 
+#if !defined(SAGE_GENERALS_ONLINE)
 			Dict d;
+#endif // !SAGE_GENERALS_ONLINE
 			d.clear();
 			AsciiString playerName;
 			playerName.format("player%d", i);
@@ -1440,7 +1682,11 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 				d.setAsciiString(TheKey_playerFaction, KEYNAME(pt->getNameKey()));
 			}
 
+#if defined(SAGE_GENERALS_ONLINE)
+			if (game->isPlayerPreorder(i))
+#else
 			if (TheGameInfo->isPlayerPreorder(i))
+#endif
 			{
 				d.setBool(TheKey_playerIsPreorder, TRUE);
 			}
@@ -1450,7 +1696,11 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 			DEBUG_LOG(("Looking for allies of player %d, team %d", i, team));
 			for(int j=0; j < MAX_SLOTS; ++j)
 			{
+#if defined(SAGE_GENERALS_ONLINE)
+				GameSlot* teamSlot = game->getSlot(j);
+#else
 				GameSlot *teamSlot = TheGameInfo->getSlot(j);
+#endif
 				// for check to see if we're trying to add ourselves
 				if(i == j || !teamSlot->isOccupied())
 					continue;
@@ -1504,7 +1754,11 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 			d.setInt(TheKey_multiplayerStartIndex, slot->getStartPos());
 //			d.setBool(TheKey_multiplayerIsLocal, slot->isLocalPlayer());
 //			d.setBool(TheKey_multiplayerIsLocal, slot->getIP() == game->getLocalIP());
+#if defined(SAGE_GENERALS_ONLINE)
+			d.setBool(TheKey_multiplayerIsLocal, slot->isHuman() && (slot->getName().compare(game->getSlot(game->getLocalSlotNum())->getName().str()) == 0));
+#else
 			d.setBool(TheKey_multiplayerIsLocal, slot->isHuman() && (slot->getName().compare(TheGameInfo->getSlot(TheGameInfo->getLocalSlotNum())->getName().str()) == 0));
+#endif
 
 /*
 			if (slot->getIP() == game->getLocalIP())
@@ -1527,7 +1781,11 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 			AsciiString slotNameAscii;
 			slotNameAscii.translate(slot->getName());
+#if defined(SAGE_GENERALS_ONLINE)
+			if (slot->isHuman() && game->getSlotNum(slotNameAscii) == game->getLocalSlotNum()) {
+#else
 			if (slot->isHuman() && TheGameInfo->getSlotNum(slotNameAscii) == TheGameInfo->getLocalSlotNum()) {
+#endif
 				localSlot = i;
 			}
 			TheSidesList->addSide(&d);
@@ -1597,11 +1855,19 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		// if there are no other teams (happens for debugging) don't end the game immediately
 		Int numTeams = 0; // this can be higher than expected, but is accurate for determining 0, 1, 2+
 		Int lastTeam = -1;
+#if defined(SAGE_GENERALS_ONLINE)
+		if (game)
+#else
 		if (TheGameInfo)
+#endif
 		{
 			for (int i=0; i<MAX_SLOTS; ++i)
 			{
+#if defined(SAGE_GENERALS_ONLINE)
+				const GameSlot* slot = game->getConstSlot(i);
+#else
 				const GameSlot *slot = TheGameInfo->getConstSlot(i);
+#endif
 				if (slot->isOccupied() && slot->getPlayerTemplate() != PLAYERTEMPLATE_OBSERVER)
 				{
 					if (slot->getTeamNumber() == -1 || slot->getTeamNumber() != lastTeam)
@@ -1742,6 +2008,9 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	updateLoadProgress(LOAD_PROGRESS_POST_VICTORY_CONDITION_SETUP);
 
 	Player *localPlayer = ThePlayerList->getLocalPlayer();
+#if defined(SAGE_GENERALS_ONLINE)
+	Player* observerPlayer = ThePlayerList->findPlayerWithNameKey(TheNameKeyGenerator->nameToKey("ReplayObserver"));
+#endif // SAGE_GENERALS_ONLINE
 
 	// set the radar as on a new map
 	TheRadar->newMap( TheTerrainLogic );
@@ -1769,8 +2038,13 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	Region3D extent;
 	TheTerrainLogic->getExtent( &extent );
 
+#if defined(SAGE_GENERALS_ONLINE)
+	TheGameLogic->setWidth(extent.hi.x - extent.lo.x);
+	TheGameLogic->setHeight(extent.hi.y - extent.lo.y);
+#else
 	setWidth( extent.hi.x - extent.lo.x );
 	setHeight( extent.hi.y - extent.lo.y );
+#endif
 
 	// anytime the world's size changes, must reset the partition mgr
 	ThePartitionManager->init();
@@ -1795,14 +2069,24 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	#endif
 
 		// Special case, load any bridge map objects.
+#if defined(SAGE_GENERALS_ONLINE)
+	const ThingTemplate* thingTemplate;
+	MapObject* pMapObj;
+	for (pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext())
+#else
 	for (MapObject *pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext())
+#endif
 	{
 
 		if (pMapObj->getFlag(FLAG_BRIDGE_FLAGS) || pMapObj->getFlag(FLAG_ROAD_FLAGS))
 			continue;	// these roads & bridges are special cased in the terrain side.
 
 		// get thing template based from map object name
+#if defined(SAGE_GENERALS_ONLINE)
+		thingTemplate = pMapObj->getThingTemplate();
+#else
 		const ThingTemplate *thingTemplate = pMapObj->getThingTemplate();
+#endif
 		if( thingTemplate == nullptr )
 			continue;
 
@@ -1849,15 +2133,25 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	updateLoadProgress(LOAD_PROGRESS_POST_PATHFINDER_NEW_MAP);
 
 	// reveal the map for the permanent observer
+#if !defined(SAGE_GENERALS_ONLINE)
 	Player *observerPlayer = ThePlayerList->findPlayerWithNameKey(TheNameKeyGenerator->nameToKey("ReplayObserver"));
+#endif // !SAGE_GENERALS_ONLINE
 	ThePartitionManager->revealMapForPlayerPermanently( observerPlayer->getPlayerIndex() );
 	DEBUG_LOG(("Reveal shroud for %ls whose index is %d", observerPlayer->getPlayerDisplayName().str(), observerPlayer->getPlayerIndex()));
 
+#if defined(SAGE_GENERALS_ONLINE)
+	if (game)
+#else
 	if (TheGameInfo)
+#endif
 	{
 		for (int i=0; i<MAX_SLOTS; ++i)
 		{
+#if defined(SAGE_GENERALS_ONLINE)
+			GameSlot* slot = game->getSlot(i);
+#else
 			GameSlot *slot = TheGameInfo->getSlot(i);
+#endif
 
 			if (!slot || !slot->isOccupied())
 				continue;
@@ -1902,12 +2196,23 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		forceFluffToProp = TRUE; // Always do client side fluff - faster, and syncs properly. jba.
 	}
 
+#if defined(SAGE_GENERALS_ONLINE)
+	progressCount = LOAD_PROGRESS_LOOP_ALL_THE_FREAKN_OBJECTS;
+	Int timer = timeGetTime();
+	if( loadingSaveGame ) {
+		// Loading a loadingSaveGame, need to add the trees to the client. jba. [8/11/2003]
+		for (pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext())
+		{
+			// get thing template based from map object name
+			thingTemplate = pMapObj->getThingTemplate();
+#else
 	if( loadingSaveGame ) {
 		// Loading a loadingSaveGame, need to add the trees to the client. jba. [8/11/2003]
 		for (MapObject *pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext())
 		{
 			// get thing template based from map object name
 			const ThingTemplate *thingTemplate = pMapObj->getThingTemplate();
+#endif
 			if( thingTemplate == nullptr )
 				continue;
 			// don't create trees and shrubs if this is one and we have that option off
@@ -1925,9 +2230,14 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	}
 	else
 	{
+#if defined(SAGE_GENERALS_ONLINE)
+
+		for (pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext())
+#else
 		Int progressCount = LOAD_PROGRESS_LOOP_ALL_THE_FREAKN_OBJECTS;
 		Int timer = timeGetTime();
 		for (MapObject *pMapObj = MapObject::getFirstMapObject(); pMapObj; pMapObj = pMapObj->getNext())
+#endif
 		{
 
 			if (pMapObj->getFlag(FLAG_BRIDGE_FLAGS) || pMapObj->getFlag(FLAG_ROAD_FLAGS)) {
@@ -1938,7 +2248,11 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 			handleNameChange( pMapObj );
 
 			// get thing template based from map object name
+#if defined(SAGE_GENERALS_ONLINE)
+			thingTemplate = pMapObj->getThingTemplate();
+#else
 			const ThingTemplate *thingTemplate = pMapObj->getThingTemplate();
+#endif
 
 			//
 			// if no template continue, some map objects don't have thing templates like
@@ -2040,6 +2354,15 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	DEBUG_LOG(("%s", Buf));
 	#endif
 
+#if defined(SAGE_GENERALS_ONLINE)
+	progressCount = LOAD_PROGRESS_LOOP_INITIAL_NETWORK_BUILDINGS;
+	// place initial network buildings/units
+	if (game && !loadingSaveGame)
+	{
+		for (int i=0; i<MAX_SLOTS; ++i)
+		{
+			GameSlot* slot = game->getSlot(i);
+#else
 	// place initial network buildings/units
 	if (TheGameInfo && !loadingSaveGame)
 	{
@@ -2047,6 +2370,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		for (int i=0; i<MAX_SLOTS; ++i)
 		{
 			GameSlot *slot = TheGameInfo->getSlot(i);
+#endif
 
 			if (!slot || !slot->isOccupied())
 				continue;
@@ -2097,7 +2421,11 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
         // Trouble was that skirmish games would get no command centers upon start, if this was set true in a GameSpyMenu
         if ( isInInternetGame() )
         {
+#if defined(SAGE_GENERALS_ONLINE)
+					if (game->oldFactionsOnly() && !pt->isOldFaction())
+#else
 				  if ( TheGameInfo->oldFactionsOnly() && !pt->isOldFaction() )
+#endif
 				    continue;
         }
 
@@ -2152,9 +2480,15 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	// Note - We construct the multiplayer start spot name manually here, so change this if you
 	//        change TheKey_Player_1_Start etc.  mdc
 	AsciiString startingCamName = TheNameKeyGenerator->keyToName(TheKey_InitialCameraPosition);
+#if defined(SAGE_GENERALS_ONLINE)
+	if (game)
+	{
+		GameSlot* slot = game->getSlot(localSlot);
+#else
 	if (TheGameInfo)
 	{
 		GameSlot *slot = TheGameInfo->getSlot(localSlot);
+#endif
 		DEBUG_ASSERTCRASH(slot, ("Starting a LAN game without ourselves!"));
 
 		if (slot->isHuman())
@@ -2285,7 +2619,15 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		TheNetwork->liteupdate();
 	}
 
+#if defined(SAGE_GENERALS_ONLINE)
+	// set a minimum display time for the load screen on GO to allow players to read ELO, army, stats, etc.
+	const UnsignedInt minLoadScreenDisplayTime = 2000;
+	UnsignedInt minLoadScreenEndTime = isInInternetGame() ? (timeGetTime() + minLoadScreenDisplayTime) : 0;
+
+	while (!isProgressComplete() || (minLoadScreenEndTime != 0 && timeGetTime() < minLoadScreenEndTime))
+#else
 	while(!isProgressComplete())
+#endif
 	{
 		updateLoadProgress(101); // keep greater then 100
 		testTimeOut();
@@ -2748,7 +3090,94 @@ void GameLogic::processCommandList( CommandList *list )
 					player?player->getPlayerDisplayName().str():L"<NONE>", crcIt->second));
 			}
 #endif // DEBUG_LOGGING
+#if defined(SAGE_GENERALS_ONLINE)
+
+			// provide more details
+			UnicodeString strMismatchDetails;
+			strMismatchDetails.format(L"GameLogic frame %d, latest frame %d, GetGameLogicRandomSeedCRC was %d\nHad %d CRCs from %d players\nMismatched Players:\n",
+				TheGameLogic->getFrame(),
+				TheGameLogic->getFrame() - TheNetwork->getRunAhead() - 1,
+				GetGameLogicRandomSeedCRC(),
+				m_cachedCRCs.size(),
+				numPlayers);
+
+			// determine who is at fault
+			std::map<UnsignedInt, int> mapCRCOccurences;
+			for (std::map<Int, UnsignedInt>::const_iterator crcIt = m_cachedCRCs.begin(); crcIt != m_cachedCRCs.end(); ++crcIt)
+			{
+				// data to determine who mismatched
+				if (mapCRCOccurences.contains(crcIt->second))
+				{
+					++mapCRCOccurences[crcIt->second];
+				}
+				else
+				{
+					mapCRCOccurences[crcIt->second] = 1;
+				}
+			}
+
+			// determine who mismatched
+			// take the 'most frequent' CRC as the correct one, everyone else is to blame
+			int biggestCRCCount = -1;
+			UnsignedInt biggestCRC = -1;
+			for (auto& crcIter : mapCRCOccurences)
+			{
+				if (crcIter.second > biggestCRCCount)
+				{
+					biggestCRC = crcIter.first;
+					biggestCRCCount = crcIter.second;
+				}
+			}
+
+			// show all players
+			for (std::map<Int, UnsignedInt>::const_iterator crcIt = m_cachedCRCs.begin(); crcIt != m_cachedCRCs.end(); ++crcIt)
+			{
+				// only show users who arent OK, UI isn't huge
+				if (crcIt->second != biggestCRC)
+				{
+					Player* player = ThePlayerList->getNthPlayer(crcIt->first);
+					UnicodeString strPlayerInfo;
+					strPlayerInfo.format(L"player %d (%s) = %X [MISMATCH]\n", crcIt->first, player ? player->getPlayerDisplayName().str() : L"<NONE>", crcIt->second);
+
+					strMismatchDetails.concat(strPlayerInfo);
+				}
+			}
+
+			// TODO_NGMP: Handle missing CRCs, although that doesnt seem common
+
+			TheNetwork->setSawCRCMismatch(strMismatchDetails);
+
+#if defined(GENERALS_ONLINE_USE_SENTRY)
+			if (TheNGMPGame != nullptr)
+			{
+				// local player info
+				int64_t userID = -1;
+				std::string strDisplayname = "Unknown";
+				NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
+				if (pAuthInterface != nullptr)
+				{
+					userID = pAuthInterface->GetUserID();
+					strDisplayname = pAuthInterface->GetDisplayName();
+				}
+				std::string strUserID = std::format("{}", userID);
+
+				sentry_set_extra("user_id", sentry_value_new_int32(userID));
+				sentry_set_extra("user_displayname", sentry_value_new_string(strDisplayname.c_str()));
+
+				AsciiString sentryMsg;
+				sentryMsg.translate(strMismatchDetails);
+
+				// send event to sentry
+				sentry_capture_event(sentry_value_new_message_event(
+					SENTRY_LEVEL_ERROR,
+					"CRC_MISMATCH",
+					sentryMsg.str()
+				));
+			}
+#endif
+#else
 			TheNetwork->setSawCRCMismatch();
+#endif
 		}
 	}
 
@@ -2860,7 +3289,12 @@ void GameLogic::deselectObject(Object *obj, PlayerMaskType playerMask, Bool affe
 				// Then, cleanup the group.
 				group->removeAll();
 #endif
+#if defined(SAGE_GENERALS_ONLINE)
+			}
+			else {
+#else
 			} else {
+#endif
 				// nullptr will clear the group.
 				player->setCurrentlySelectedAIGroup(nullptr);
 			}
@@ -3145,7 +3579,11 @@ void GameLogic::popSleepyUpdate()
 void GameLogic::friend_awakenUpdateModule(Object* obj, UpdateModulePtr u, UnsignedInt whenToWakeUp)
 {
 	//USE_PERF_TIMER(friend_awakenUpdateModule)
+#if defined(SAGE_GENERALS_ONLINE)
+	UnsignedInt now = TheGameLogic->getFrame();
+#else
 	UnsignedInt now = getFrame();
+#endif
 	DEBUG_ASSERTCRASH(whenToWakeUp >= now, ("setWakeFrame frame is in the past... are you sure this is what you want?"));
 
 	if (u == m_curUpdateModule)
@@ -3429,11 +3867,22 @@ static void unitTimings()
 			AsciiString type;
 			if (unitTypes == INFANTRY) {
 				type="Infantry";
+#if defined(SAGE_GENERALS_ONLINE)
+			}
+			else if (unitTypes == VEHICLE) {
+				type="Vehicle";
+			}
+			else if (unitTypes == STRUCTURE) {
+				type="Structure";
+			}
+			else {
+#else
 			}	else if (unitTypes == VEHICLE) {
 				type="Vehicle";
 			}	else if (unitTypes == STRUCTURE) {
 				type="Structure";
 			}	else {
+#endif
 				type="Other";
 			}
 			AsciiString modelName;
@@ -3546,11 +3995,22 @@ static void unitTimings()
 
 			if (unitTypes == INFANTRY) {
 				if (!btt->isKindOf(KINDOF_INFANTRY)) continue;
+#if defined(SAGE_GENERALS_ONLINE)
+			}
+			else if (unitTypes == VEHICLE) {
+				if (!btt->isKindOf(KINDOF_VEHICLE)) continue;
+			}
+			else if (unitTypes == STRUCTURE) {
+				if (!btt->isKindOf(KINDOF_STRUCTURE)) continue;
+			}
+			else {
+#else
 			}	else if (unitTypes == VEHICLE) {
 				if (!btt->isKindOf(KINDOF_VEHICLE)) continue;
 			}	else if (unitTypes == STRUCTURE) {
 				if (!btt->isKindOf(KINDOF_STRUCTURE)) continue;
 			}	else {
+#endif
 				if (btt->isKindOf(KINDOF_INFANTRY)) continue;
 				if (btt->isKindOf(KINDOF_VEHICLE)) continue;
 				if (btt->isKindOf(KINDOF_STRUCTURE)) continue;
@@ -3736,6 +4196,15 @@ void GameLogic::update()
 	USE_PERF_TIMER(GameLogic_update)
 	PROFILER_SECTION_COLOR(0x4CAF50);
 
+#if defined(SAGE_GENERALS_ONLINE)
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+		if (m_frame % 2 != 0)
+		{
+			m_frameLegacyLast = m_frameLegacy;
+		}
+#endif
+
+#endif // SAGE_GENERALS_ONLINE
 	LatchRestore<Bool> inUpdateLatch(m_isInUpdate, TRUE);
 #ifdef DO_UNIT_TIMINGS
 	unitTimings();
@@ -3778,7 +4247,11 @@ void GameLogic::update()
 	}
 
 	// send the current time to the GameClient
+#if defined(SAGE_GENERALS_ONLINE)
+	UnsignedInt now = TheGameLogic->getFrame();
+#else
 	UnsignedInt now = getFrame();
+#endif
 	TheGameClient->setFrame(now);
 
 	PROFILER_PLOT("LogicFrame", static_cast<int64_t>(now));
@@ -3798,6 +4271,167 @@ void GameLogic::update()
 	// would be getting the CRC anyway, so replays can get the CRCs from the exact instant in time as the original.
 	Bool isMPGameOrReplay = (TheRecorder && TheRecorder->isMultiplayer() && getGameMode() != GAME_SHELL && getGameMode() != GAME_NONE);
 	Bool isSoloGameOrReplay = (TheRecorder && !TheRecorder->isMultiplayer() && getGameMode() != GAME_SHELL && getGameMode() != GAME_NONE);
+#if defined(SAGE_GENERALS_ONLINE)
+	Bool generateForMP = (isMPGameOrReplay && TheGameInfo->getCRCInterval() > 0 && (m_frame % TheGameInfo->getCRCInterval()) == 0);
+#ifdef DEBUG_CRC
+	Bool generateForSolo = isSoloGameOrReplay && ((m_frame && (m_frame%100 == 0)) ||
+		(getFrame() >= TheCRCFirstFrameToLog && getFrame() < TheCRCLastFrameToLog && (REPLAY_CRC_INTERVAL > 0 && (m_frame % REPLAY_CRC_INTERVAL) == 0)));
+#else
+	Bool generateForSolo = isSoloGameOrReplay && (REPLAY_CRC_INTERVAL > 0 && (m_frame % REPLAY_CRC_INTERVAL) == 0);
+#endif // DEBUG_CRC
+
+	if (generateForSolo || generateForMP)
+	{
+		m_CRC = getCRC( CRC_RECALC );
+		bool isPlayback = (TheRecorder && TheRecorder->isPlaybackMode());
+
+		GameMessage *msg = newInstance(GameMessage)(GameMessage::MSG_LOGIC_CRC);
+		msg->appendIntegerArgument(m_CRC);
+		msg->appendBooleanArgument(isPlayback);
+
+		// TheSuperHackers @info helmutbuhler 13/04/2025
+		// During replay simulation, we bypass TheMessageStream and instead put the CRC message
+		// directly into TheCommandList because we don't update TheMessageStream during simulation.
+		GameMessageList *messageList = TheMessageStream;
+		if (TheRecorder && TheRecorder->getMode() == RECORDERMODETYPE_SIMULATION_PLAYBACK)
+			messageList = TheCommandList;
+		messageList->appendMessage(msg);
+
+		DEBUG_LOG(("Appended %sCRC on frame %d: %8.8X", isPlayback ? "Playback " : "", m_frame, m_CRC));
+	}
+
+	// collect stats
+	if(TheStatsCollector)
+	{
+		TheStatsCollector->update();
+	}
+
+	// Update the Recorder
+	{
+		TheRecorder->UPDATE();
+	}
+
+	// process client commands
+	{
+		processCommandList( TheCommandList );
+	}
+
+#ifdef ALLOW_NONSLEEPY_UPDATES
+	{
+		for (std::list<UpdateModulePtr>::const_iterator it = m_normalUpdates.begin(); it != m_normalUpdates.end(); ++it)
+		{
+			UpdateModulePtr u = *it;
+			DisabledMaskType dis = u->friend_getObject()->getDisabledFlags();
+#if RETAIL_COMPATIBLE_CRC
+			if (!dis.any() || dis.anyIntersectionWith(u->getDisabledTypesToProcess()))
+#else
+			// TheSuperHackers @bugfix Stubbjax 15/03/2026 The disabled-types-to-process mask is now exclusive.
+			// Previously, if the disabled mask had any bits in common with the disabled-types-to-process mask,
+			// the update would be processed. Now, if any *other* bits are set in the disabled mask, the update
+			// is no longer processed.
+			if (u->getDisabledTypesToProcess().testForAll(dis))
+#endif
+			{
+				USE_PERF_TIMER(GameLogic_update_normal)
+
+				m_curUpdateModule = u;
+
+				#ifdef DEBUG_LOGGING
+					UpdateSleepTime sleep = u->update();
+					DEBUG_ASSERTCRASH(sleep == UPDATE_SLEEP_NONE, ("you must return SLEEPNONE from all nonsleepy modules"));
+				#else
+					u->update();
+				#endif
+
+				m_curUpdateModule = nullptr;
+			}
+		}
+	}
+#endif
+
+	{
+		while (!m_sleepyUpdates.empty())
+		{
+			UpdateModulePtr u = peekSleepyUpdate();
+
+			if (!u)
+			{
+				DEBUG_CRASH(("Null update. should not happen."));
+				continue;
+			}
+
+			// we're done, everyone else is sleeping.
+			// break from the loop BEFORE we pop this item off.
+			if (u->friend_getNextCallFrame() > now)
+			{
+				break;
+			}
+
+			UpdateSleepTime sleepLen = UPDATE_SLEEP_NONE;	// default, if it is disabled.
+
+			DisabledMaskType dis = u->friend_getObject()->getDisabledFlags();
+#if RETAIL_COMPATIBLE_CRC
+			if (!dis.any() || dis.anyIntersectionWith(u->getDisabledTypesToProcess()))
+#else
+			// TheSuperHackers @bugfix Stubbjax 15/03/2026 The disabled-types-to-process mask is now exclusive.
+			// Previously, if the disabled mask had any bits in common with the disabled-types-to-process mask,
+			// the update would be processed. Now, if any *other* bits are set in the disabled mask, the update
+			// is no longer processed.
+			if (u->getDisabledTypesToProcess().testForAll(dis))
+#endif
+			{
+				USE_PERF_TIMER(GameLogic_update_sleepy)
+
+				//DEBUG_LOG(("calling update %08lx (%d %d)...",update,update->friend_getNextCallFrame(),update->friend_getNextCallPhase()));
+				m_curUpdateModule = u;
+
+				sleepLen = u->update();
+				DEBUG_ASSERTCRASH(sleepLen > 0, ("you may not return 0 from update"));
+				if (sleepLen < 1)
+					sleepLen = UPDATE_SLEEP_NONE;
+
+				m_curUpdateModule = nullptr;
+
+			}
+
+			// else defer it till next frame and re-push it
+			u->friend_setNextCallFrame(now + sleepLen);
+			rebalanceSleepyUpdate(0);
+		}
+	}
+
+	validateSleepyUpdate();
+
+	// update the Artificial Intelligence system
+	{
+		TheAI->UPDATE();
+	}
+
+	// production updates
+	{
+		TheBuildAssistant->UPDATE();
+	}
+
+	// update partition info
+	{
+		ThePartitionManager->UPDATE();
+	}
+
+	//
+	// End of frame clean-up
+	//
+
+	// destroy all pending objects
+	processDestroyList();
+
+	// reset the command list, destroying all messages
+	TheCommandList->reset();
+
+	TheWeaponStore->UPDATE();
+	TheLocomotorStore->UPDATE();
+	TheVictoryConditions->UPDATE();
+
+#else
 	Bool generateForMP = (isMPGameOrReplay && (m_frame % TheGameInfo->getCRCInterval()) == 0);
 #ifdef DEBUG_CRC
 	Bool generateForSolo = isSoloGameOrReplay && ((m_frame && (m_frame%100 == 0)) ||
@@ -3957,6 +4591,56 @@ void GameLogic::update()
 	TheLocomotorStore->UPDATE();
 	TheVictoryConditions->UPDATE();
 
+#endif
+#if defined(SAGE_GENERALS_ONLINE)
+	// When observers are disabled by host on GO, remove the non host player from game after they are defeated
+	bool hasAllyAlive = false;
+	Player* localPlayer = ThePlayerList->getLocalPlayer();
+	if (localPlayer)
+	{
+		Team* myTeam = localPlayer->getDefaultTeam();
+		if (myTeam)
+		{
+			for (int playerIndex = 0; playerIndex < ThePlayerList->getPlayerCount(); ++playerIndex)
+			{
+				Player* other = ThePlayerList->getNthPlayer(playerIndex);
+				if (!other || other == localPlayer) continue;
+
+				if (myTeam->getRelationship(other->getDefaultTeam()) == ALLIES && !TheVictoryConditions->hasSinglePlayerBeenDefeated(other))
+					hasAllyAlive = true;
+			}
+		}
+	}
+
+	static int observerKickCountdown = -1;
+	bool shouldKickObserver = TheNGMPGame && !TheNGMPGame->getAllowObservers() && TheGameLogic->getGameMode() == GAME_INTERNET &&
+							  localPlayer && !localPlayer->isPlayerObserver() && TheVictoryConditions->hasSinglePlayerBeenDefeated(localPlayer);
+
+	if (!shouldKickObserver)
+		observerKickCountdown = -1;
+	else
+	{
+		if (hasAllyAlive)
+			TheGameLogic->exitGame();
+
+		if (TheNGMPGame->amIHost())
+			observerKickCountdown = -1;
+		else
+		{
+			if (observerKickCountdown < 0)
+				observerKickCountdown = LOGICFRAMES_PER_SECOND * 10;
+
+			if (observerKickCountdown > 0)
+				observerKickCountdown--;
+			else
+			{
+				TheGameLogic->exitGame();
+				observerKickCountdown = -1;
+			}
+		}
+	}
+
+#endif // SAGE_GENERALS_ONLINE
 	{
 		//Handle disabled statii (and re-enable objects once frame matches)
 		for( Object *obj = m_objList; obj; obj = obj->getNextObject() )
@@ -3977,6 +4661,14 @@ void GameLogic::update()
 	{
 		m_frame++;
 		m_hasUpdated = TRUE;
+#if defined(SAGE_GENERALS_ONLINE)
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+		if (m_frame % 2 == 0)
+		{
+			m_frameLegacy++;
+		}
+#endif
+#endif // SAGE_GENERALS_ONLINE
 	}
 }
 
@@ -3992,7 +4684,11 @@ void GameLogic::preUpdate()
 		Bool pause = TRUE;
 		Bool pauseMusic = FALSE;
 		Bool pauseInput = FALSE;
+#if defined(SAGE_GENERALS_ONLINE)
+		TheGameLogic->setGamePaused(pause, pauseMusic, pauseInput);
+#else
 		setGamePaused(pause, pauseMusic, pauseInput);
+#endif
 	}
 }
 
@@ -4064,7 +4760,11 @@ void GameLogic::registerObject( Object *obj )
 	// add object to lookup table
 	addObjectToLookupTable( obj );
 
+#if defined(SAGE_GENERALS_ONLINE)
+	UnsignedInt now = TheGameLogic->getFrame();
+#else
 	UnsignedInt now = getFrame();
+#endif
 	if (now == 0)
 		now = 1;
 	for (BehaviorModule** b = obj->getBehaviorModules(); *b; ++b)
@@ -4677,7 +5377,13 @@ void GameLogic::testTimeOut()
 		// If they've completed their progress, ignore them
 		if(m_progressComplete[i])
 			continue;
+#if defined(SAGE_GENERALS_ONLINE)
+		// which timeout value do we want to use? we give them a bigger grace period if they made some progress on loading, otherwise we give them a very short timeout
+		const Int timeoutValToUse = m_progressMade[i] > 0 ? PROGRESS_COMPLETE_TIMEOUT_PROGRESS_MADE : PROGRESS_COMPLETE_TIMEOUT_ZERO_PROGRESS_MADE;
+		if (m_progressCompleteTimeout[i] + timeoutValToUse > curTime)
+#else
 		if(	m_progressCompleteTimeout[i] + PROGRESS_COMPLETE_TIMEOUT > curTime )
+#endif
 			return;
 	}
 	// if we made it this far, that means everyone has timed out.
@@ -5425,7 +6131,11 @@ void GameLogic::loadPostProcess()
 #ifdef ALLOW_NONSLEEPY_UPDATES
 	m_normalUpdates.clear();
 #else
+#if defined(SAGE_GENERALS_ONLINE)
+	UnsignedInt now = TheGameLogic->getFrame();
+#else
 	UnsignedInt now = getFrame();
+#endif
 	if (now == 0)
 		now = 1;
 #endif

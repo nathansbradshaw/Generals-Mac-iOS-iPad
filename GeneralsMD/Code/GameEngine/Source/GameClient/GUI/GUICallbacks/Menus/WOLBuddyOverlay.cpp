@@ -379,6 +379,17 @@ void insertChat( BuddyMessage msg )
 	}
 }
 
+#if defined(SAGE_GENERALS_ONLINE)
+// GeneralsOnline NGMP code calls widened updateBuddyInfo(bIsAutoRefresh,
+// bUseCache) and showNotificationBox(nick, message, bPlaySound). The non-MVP
+// buddy overlay isn't ported at friends-scale, so adapt to the existing
+// entry points (extra flags ignored).
+void updateBuddyInfo();
+void showNotificationBox( AsciiString nick, UnicodeString message );
+void updateBuddyInfo(bool /*bIsAutoRefresh*/, bool /*bUseCache*/) { updateBuddyInfo(); }
+void showNotificationBox( AsciiString nick, UnicodeString message, bool /*bPlaySound*/ ) { showNotificationBox(nick, message); }
+#endif
+
 void updateBuddyInfo()
 {
 	if (!TheGameSpyBuddyMessageQueue->isConnected())

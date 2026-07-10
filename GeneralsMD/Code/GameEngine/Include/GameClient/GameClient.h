@@ -36,6 +36,12 @@
 #include "GameClient/CommandXlat.h"
 #include "GameClient/Drawable.h"
 
+#if defined(SAGE_GENERALS_ONLINE)
+// Self-contained like Settings.h/NGMPGame.h: pulls in the GENERALS_ONLINE_*
+// high-fps macros that gate the legacy-frame members below.
+#include "GameNetwork/GeneralsOnline/NextGenMP_defines.h"
+#endif
+
 // forward declarations
 class AsciiString;
 class Display;
@@ -96,8 +102,12 @@ public:
 	virtual void setFrame( UnsignedInt frame ) { m_frame = frame; }			///< Set the GameClient's internal frame number
 	virtual void registerDrawable( Drawable *draw );										///< Given a drawable, register it with the GameClient and give it a unique ID
 
+#if defined(SAGE_GENERALS_ONLINE)
+	void step();
+#else
 	void step(); ///< Do one fixed time step
 
+#endif
 	void updateHeadless();
 
 	void addDrawableToLookupTable( Drawable *draw );			///< add drawable ID to hash lookup table
@@ -138,6 +148,14 @@ public:
 	//---------------------------------------------------------------------------------------
 	virtual UnsignedInt getFrame() { return m_frame; }						///< Returns the current simulation frame number
 
+#if defined(SAGE_GENERALS_ONLINE)
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	UnsignedInt getFrameLegacy(void) { return m_frameLegacy; }
+	UnsignedInt getFrameLegacyLast(void) { return m_frameLegacyLast; }
+	bool HasLegacyFrameAdvanced(void) { return m_frameLegacy != m_frameLegacyLast; }
+#endif
+
+#endif // SAGE_GENERALS_ONLINE
 	//---------------------------------------------------------------------------
 	virtual void setTeamColor( Int red, Int green, Int blue ) = 0;  ///< @todo superhack for demo, remove!!!
 
@@ -166,6 +184,15 @@ protected:
 
 	// @todo Should there be a separate GameClient frame counter?
 	UnsignedInt m_frame;																				///< Simulation frame number from server
+#if defined(SAGE_GENERALS_ONLINE)
+
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	int64_t m_LegacyFrameEndLastFrame = 0;
+	int64_t m_legacyFrameMSAccured = 0;
+	UnsignedInt m_frameLegacy;
+	UnsignedInt m_frameLegacyLast;
+#endif
+#endif // SAGE_GENERALS_ONLINE
 
 	Drawable *m_drawableList;																		///< All of the drawables in the world
 //	DrawablePtrHash m_drawableHash;															///< Used for DrawableID lookups

@@ -35,6 +35,9 @@
 #include "Common/PerfTimer.h"
 
 #include "GameNetwork/LANAPICallbacks.h"
+#if defined(SAGE_GENERALS_ONLINE)
+#include "../OnlineServices_Init.h"
+#endif // SAGE_GENERALS_ONLINE
 
 extern DWORD TheMessageTime;
 
@@ -105,10 +108,23 @@ void Win32GameEngine::update()
 				TheLAN->update();
 			}
 
+#if defined(SAGE_GENERALS_ONLINE)
+			if (NGMP_OnlineServicesManager::GetInstance() != nullptr)
+			{
+				NGMP_OnlineServicesManager::GetInstance()->Tick();
+			}
+
+#endif // SAGE_GENERALS_ONLINE
 			// If we are running a multiplayer game, keep running the logic.
 			// There is code in the client to skip client redraw if we are
 			// iconic.  jba.
+#if defined(SAGE_GENERALS_ONLINE)
+			// GO_CHANGE: If we have an active network session, keep running to prevent disconnecting us from
+			// other players during lobby and loading screen where isInMultiplayerGame() returns false
+			if (TheGameEngine->getQuitting() || TheGameLogic->isInMultiplayerGame() || (TheNetwork != nullptr)) {
+#else
 			if (TheGameEngine->getQuitting() || TheGameLogic->isInInternetGame() || TheGameLogic->isInLanGame()) {
+#endif
 				break; // keep running.
 			}
 		}

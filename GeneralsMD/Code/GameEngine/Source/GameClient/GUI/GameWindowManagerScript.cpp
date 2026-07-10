@@ -261,7 +261,11 @@ static void readUntilSemicolon( File *fp, char *buffer, int maxBufLen )
 		fp->read(buffer + i, 1);
 
 		// make all whitespace characters spaces
+#if defined(SAGE_GENERALS_ONLINE)
+		if( isspace( (unsigned char)buffer[ i ] ) )
+#else
 		if( isspace( buffer[ i ] ) )
+#endif
 		{
 
 			if( start == FALSE )
@@ -2726,12 +2730,32 @@ GameWindow *GameWindowManager::winCreateFromScript( AsciiString filenameString,
 	else
 		strlcpy(filepath, filename, ARRAY_SIZE(filepath));
 
+#if defined(SAGE_GENERALS_ONLINE)
+	// check Generals Online first
+	char gofilepath[_MAX_PATH] = "GeneralsOnlineGameData\\";
+	if (strchr(filename, '\\') == NULL)
+		sprintf(gofilepath, "GeneralsOnlineGameData\\%s", filename);
+	else
+		strcpy(gofilepath, filename);
+
+	inFile = TheFileSystem->openFile(gofilepath, File::READ);
+	if (inFile == NULL)
+	{
+		// fall back to game archive
+		inFile = TheFileSystem->openFile(filepath, File::READ);
+		if (inFile == NULL)
+		{
+			DEBUG_LOG(("WinCreateFromScript: Cannot access file '%s'.\n", filename));
+			return NULL;
+		}
+#else
   // Open the input file
 	inFile = TheFileSystem->openFile(filepath, File::READ);
 	if (inFile == nullptr)
 	{
 		DEBUG_LOG(( "WinCreateFromScript: Cannot access file '%s'.", filename ));
 		return nullptr;
+#endif
 	}
 
   // read into memory

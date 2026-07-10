@@ -39,4 +39,7 @@ void HandlePersistentStorageResponses();
 void UpdateLocalPlayerStats();
 
 void SetLookAtPlayer( Int id, AsciiString nick );
+#if defined(SAGE_GENERALS_ONLINE)
+void SetLookAtPlayer( int64_t id, UnicodeString nick );	// GeneralsOnline overload (int64 profile id, unicode name)
+#endif
 void PopulatePlayerInfoWindows( AsciiString parentWindowName );

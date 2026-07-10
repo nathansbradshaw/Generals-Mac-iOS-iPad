@@ -239,6 +239,28 @@ void GetAdditionalDisconnectsFromUserFile(PSPlayerStats *stats)
 // default values
 RankPoints::RankPoints()
 {
+#if defined(SAGE_GENERALS_ONLINE)
+	// GeneralsX: the GeneralsOnline StatsInterface constructs RankPoints during
+	// NGMP Init — before GameSpy login, so TheGameSpyConfig is still null. Fall
+	// back to the stock rank thresholds (the values in the comments below)
+	// rather than dereference a null config. StatsInterface overwrites these
+	// immediately afterward via its own getPointsForRank() anyway.
+	if (TheGameSpyConfig == nullptr)
+	{
+		m_ranks[RANK_PRIVATE]						= 0;
+		m_ranks[RANK_CORPORAL]						= 5;
+		m_ranks[RANK_SERGEANT]						= 10;
+		m_ranks[RANK_LIEUTENANT]					= 20;
+		m_ranks[RANK_CAPTAIN]						= 50;
+		m_ranks[RANK_MAJOR]							= 100;
+		m_ranks[RANK_COLONEL]						= 200;
+		m_ranks[RANK_BRIGADIER_GENERAL]				= 500;
+		m_ranks[RANK_GENERAL]						= 1000;
+		m_ranks[RANK_COMMANDER_IN_CHIEF]			= 2000;
+	}
+	else
+#endif
+	{
 	m_ranks[RANK_PRIVATE]							= 0;
 	m_ranks[RANK_CORPORAL]						= TheGameSpyConfig->getPointsForRank(RANK_CORPORAL); // 5
 	m_ranks[RANK_SERGEANT]						= TheGameSpyConfig->getPointsForRank(RANK_SERGEANT); // 10
@@ -249,6 +271,7 @@ RankPoints::RankPoints()
 	m_ranks[RANK_BRIGADIER_GENERAL]		= TheGameSpyConfig->getPointsForRank(RANK_BRIGADIER_GENERAL); // 500
 	m_ranks[RANK_GENERAL]							= TheGameSpyConfig->getPointsForRank(RANK_GENERAL); // 1000
 	m_ranks[RANK_COMMANDER_IN_CHIEF]	= TheGameSpyConfig->getPointsForRank(RANK_COMMANDER_IN_CHIEF); // 2000
+	}
 
 	m_winMultiplier = 3.0f;
 	m_lostMultiplier = 0.0f;
@@ -264,6 +287,18 @@ void SetLookAtPlayer( Int id, AsciiString nick)
 	lookAtPlayerID = id;
 	lookAtPlayerName = nick.str();
 }
+
+#if defined(SAGE_GENERALS_ONLINE)
+// GeneralsOnline widened SetLookAtPlayer to (int64_t, UnicodeString). At
+// friends-scale the player-info overlay is ASCII; adapt to the existing impl
+// rather than pull in the non-MVP PopupPlayerInfo NGMP rewrite.
+void SetLookAtPlayer( int64_t id, UnicodeString nick)
+{
+	AsciiString asciiNick;
+	asciiNick.translate(nick);
+	SetLookAtPlayer( (Int)id, asciiNick );
+}
+#endif // SAGE_GENERALS_ONLINE
 
 //	BATTLE_HONOR_LADDER_CHAMP		= 0x0000001,
 //	BATTLE_HONOR_STREAK					= 0x0000002,
@@ -809,6 +844,16 @@ static GameWindow* findWindow(GameWindow *parent, AsciiString baseWindow, AsciiS
 
 void PopulatePlayerInfoWindows( AsciiString parentWindowName )
 {
+#if defined(SAGE_GENERALS_ONLINE)
+	// GeneralsX: in the GeneralsOnline flow the GameSpy persistent-storage stack
+	// (TheGameSpyInfo / TheGameSpyPSMessageQueue) is never initialized — NGMP has
+	// its own stats. The legacy GameSpy player-stats panel is non-MVP, so skip it
+	// rather than dereference a null TheGameSpyInfo.
+	if (TheGameSpyInfo == nullptr)
+	{
+		return;
+	}
+#endif
 	Int lookupID = TheGameSpyInfo->getLocalProfileID();
 	if(parentWindowName == "PopupPlayerInfo.wnd")
 	{

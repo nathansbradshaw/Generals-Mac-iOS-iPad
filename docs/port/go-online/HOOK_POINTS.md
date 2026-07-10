@@ -15,6 +15,7 @@ Source: their fork @ b7cfeaf0. Tags: **[MVP]** custom-match path,
 | GameLogic/System/GameLogic.cpp, GameClient/GameClient.cpp | MVP | frame pump / transport handoff |
 | Include/GameNetwork/UDPTransport.h | MVP | transport abstraction their NextGenTransport plugs into |
 | Common/version.cpp | MVP | version gate for match compatibility |
+| GameNetwork/GameSpy/MainMenuUtils.cpp | MVP | **found during T4.1g** (T0.3 grep missed it — no NGMP token on the call line). `StartPatchCheck`/`reallyStartPatchCheck` rewritten to `NGMP_OnlineServicesManager::CreateInstance()/Init()`, run a version check, then `TheShell->push("Menus/GameSpyLoginProfile.wnd")` — this is the actual Online-button→login-UI path. Ported guarded; the upstream ARM-rejection block was removed (we target Apple Silicon). |
 | Menus/WOLQuickMatchMenu.cpp | non-MVP | quickmatch |
 | Menus/WOLBuddyOverlay.cpp, PopupPlayerInfo.cpp | non-MVP | social/buddies |
 | Menus/ScoreScreen.cpp, Common/StatsExporter.cpp | non-MVP | stats upload |
@@ -26,6 +27,37 @@ Source: their fork @ b7cfeaf0. Tags: **[MVP]** custom-match path,
 | GameClient/InGameUI.cpp, W3DDevice/.../W3DInGameUI.cpp | verify | possibly connection-status UI |
 | GameLogic: EMPUpdate.cpp, Weapon.cpp, Scripts.cpp | verify | may be 60Hz/logic-rate refs — MUST understand before skipping (sim-affecting) |
 | WWVegas/WW3D2/ww3d.cpp/.h | verify | render-loop pacing? |
+
+## T4.1f — [verify] hook classifications (2026-07-09)
+
+Examined each [verify] file's diff vs their base. Result: **every one is
+in-match, 60Hz-render, or sim-math** — none sits on the "reach the lobby"
+critical path that T4.1's done-when requires. All are **deferred to Phase 5
+(match flow) / Phase 6 (determinism)** and left unwired. The lobby path
+(tasks T4.1b–e) does not reference them; the T4.1g build confirms nothing
+imported needs them.
+
+| File | Verdict | Why deferred / what it does |
+|---|---|---|
+| `GameClient/InGameUI.cpp` + `InGameUI.h` | Phase 5 | ~1000-line observer-stats overlay, chat-message lifetime, and high-fps message timing. `addMessageText` gains a `bIsChatMsg` overload; conflicts with our cross-platform `format_va` printf rewrite. In-match UI, not lobby. |
+| `GUICallbacks/InGameChat.cpp` | Phase 5 | In-match chat; rides the match transport (`TheNGMPGame`). Depends on InGameUI's chat overload. Bring up with match flow. |
+| `W3DDevice/.../W3DInGameUI.cpp` | Phase 5 | Includes `OnlineServices_Init.h` for the same in-match overlay. |
+| `MessageStream/CommandXlat.cpp` | Phase 5/6 | 60Hz input-rate changes + pushes FPS setting into NGMP settings. Input cadence — couple to 60Hz bring-up, not lobby. |
+| `MessageStream/SelectionXlat.cpp` | Phase 6 | `NGMP_CHANGE` group-merge tweak (SCUD bug) — **sim-affecting**. Must go through the determinism harness, not silently enabled. |
+| `GameLogic/Object/Weapon.cpp` | Phase 6 | `GENERALS_ONLINE_HIGH_FPS_SERVER` rate-of-fire frame-multiplier math + Gattling hack — **sim-affecting**. Determinism-gated. |
+| `GameLogic/Object/Update/EMPUpdate.cpp` | Phase 6 | High-fps frame-multiplier on EMP scale/lifetime — **sim-affecting**. Determinism-gated. |
+| `GameLogic/ScriptEngine/Scripts.cpp` | none needed | Their `ShellGeneralsOnline*` script-hook strings are already in our upstream base (`ShellHooks.h`); no diff to port. |
+| `Common/System/registry.cpp` | non-MVP | Steam on-demand-language disk fallback; ON path uses Win32 `GetModuleFileNameA` + `std::format`/`std::filesystem`. Nicety, not friends-scale-needed; would need a POSIX port. |
+| `Menus/OptionsMenu.cpp` | Phase 5 | Online settings UI (FPS limit, chat life) — reads NGMP settings; not needed to reach lobby. |
+| `WWVegas/WW3D2/ww3d.cpp/.h` | Phase 5 | Only adds `#include NextGenMP_defines.h` for high-fps render pacing defines. Reverted; GameEngine.cpp's own `#include "ww3d.h"` uses the stock header. |
+
+**Sim-determinism note:** the high-fps changes (Weapon/EMPUpdate/InGameUI
+timing/CommandXlat) are gated behind `GENERALS_ONLINE_HIGH_FPS_SERVER`, which
+*is* defined in the imported `NextGenMP_defines.h`. Wiring them under
+`SAGE_GENERALS_ONLINE` would silently activate 60Hz sim math. For an
+identical-binary Apple↔Apple MVP that stays deterministic, but it changes
+cross-ISA behavior and must be enabled deliberately with the Phase 6 harness
+in place — hence deferred, not force-ported here.
 
 ## Raw grep hits (first 3 per file)
 

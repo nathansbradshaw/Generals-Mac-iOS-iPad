@@ -252,6 +252,17 @@ LadderList::LadderList()
 {
 	//Int profile = TheGameSpyInfo->getLocalProfileID();
 
+#if defined(SAGE_GENERALS_ONLINE)
+	// GeneralsX: the GeneralsOnline StatsInterface builds the ladder list during
+	// NGMP Init, before GameSpy login — so TheGameSpyConfig is still null. Ladders
+	// are non-MVP at friends-scale; leave the list empty rather than dereference
+	// a null config.
+	if (TheGameSpyConfig == nullptr)
+	{
+		return;
+	}
+#endif
+
 	AsciiString rawMotd = TheGameSpyConfig->getLeftoverConfig();
 	AsciiString line;
 	Bool inLadders = FALSE;

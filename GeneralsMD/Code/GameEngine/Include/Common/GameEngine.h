@@ -53,6 +53,13 @@ class Radar;
 class WebBrowser;
 class ParticleSystemManager;
 
+#if defined(SAGE_GENERALS_ONLINE)
+void TearDownGeneralsOnline();
+
+/**
+ * The implementation of the game engine
+ */
+#endif // SAGE_GENERALS_ONLINE
 class GameEngine : public SubsystemInterface
 {
 public:

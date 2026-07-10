@@ -82,3 +82,105 @@ non-MD Generals build keeps working — verified `g_gameengine` still links.
 Call sites switched to `new UDPTransport`: `LANAPI.cpp`, `NAT.cpp`,
 `ConnectionManager.cpp`. NextGenTransport selection in ConnectionManager is
 deliberately NOT wired yet — that's a Phase 4 hook.
+
+## Phase 4 — T4.1 hook points + backend connection prep (2026-07-09)
+
+Ported the custom-match-path hooks from their fork using a 3-way
+merge+guard tool (`scripts/go-online/merge_guard.py`): base = their pre-fork
+commit `bf8d5be0`, ours = HEAD, theirs = `references/generalsonline-gameclient`.
+The tool wraps each their-side hunk in `#if defined(SAGE_GENERALS_ONLINE)`
+so the OFF build preprocesses to today's source verbatim (verified per file
+with `unifdef -USAGE_GENERALS_ONLINE`). It resolves their `GENERALS_ONLINE`
+macro (always defined when the option is ON) up front, and fuses hunks that
+would otherwise split a `/* */` comment or an enclosing `#if` across a guard.
+
+Files ported (all guarded, OFF path = HEAD):
+- Engine pump: `Common/GameEngine.{h,cpp}` (TearDownGeneralsOnline, sentry
+  init/shutdown, settings init, per-frame Tick + delayed teardown),
+  `Win32Device/Win32GameEngine.cpp` (Tick + isInMultiplayerGame loop gate),
+  `Main/WinMain.cpp` (version gate). SDL3 entry (`Main/SDL3Main.cpp`): version
+  gate only — **AttemptLoadSteam intentionally NOT called** (Steam cut from
+  friends-scale MVP, and calling it in `main()` hangs in NetworkLog before
+  TheGlobalData exists).
+- Menus: MainMenu (online button already routes via StartPatchCheck),
+  WOLLoginMenu, WOLWelcomeMenu, WOLLobbyMenu, WOLGameSetupMenu, WOLMapSelectMenu,
+  PopupHostGame, PopupJoinGame. Support: GUIUtil, GameWindowManagerScript,
+  GameClient.{h,cpp} (render-rate 60Hz frame counter), GameLogic.{h,cpp},
+  version.cpp.
+- **MainMenuUtils.cpp** — found during the build burn-down (T0.3 grep missed
+  it). This is the real Online-button→login path: `StartPatchCheck` now creates
+  and inits `NGMP_OnlineServicesManager`, runs a version check, and pushes
+  `Menus/GameSpyLoginProfile.wnd`. The upstream **ARM-processor rejection was
+  removed** — this port targets Apple Silicon.
+
+Compile/link burn-down themes (all guarded to ON):
+| Theme | Fix |
+|---|---|
+| `std::chrono::utc_clock` (GameClient, WOLLobbyMenu, WOLGameSetupMenu) | → `system_clock` (Apple libc++ has no utc_clock; delta-only use) |
+| pointer→`Int`/`UnsignedInt` narrowing casts on `GadgetX GetItemData` | → `static_cast<Int>(reinterpret_cast<intptr_t>(...))` (64-bit safe, matches our tree) |
+| GameClient.h high-fps frame members not visible | added guarded `#include NextGenMP_defines.h` (self-contained, like Settings.h) |
+| GameClient.h / GameLogic.h drift (m_frameLegacy, m_progressMade, setDefaults, progress-timeout enums) | guard-ported the header additions; dropped the duplicate `IsLoadScreenActive` Phase 3 already added |
+| `winsock` (`ws2ipdef.h`) in WOLGameSetupMenu ON include | `#if defined(_WIN32)`-guarded (no winsock symbols used off-Windows) |
+| sentry stub missing `sentry_value_new_int32` / `sentry_set_extra` | added no-op template stubs (sentry stays a no-op; USE_SENTRY left as-is) |
+| `NetworkInterface::setSawCRCMismatch()` drift → takes `UnicodeString&` | guard-ported interface + `Network` override/impl |
+| `CustomMatchPreferences::get/setLastLobbyName` | guard-ported header + impl in Core `UserPreferences.cpp` |
+| `LobbyGameModeFilter` enum + `theLobbyFilter` global | guard-ported into Core `LobbyUtils.{h,cpp}` |
+| `PlayerInfo::m_nameUni` | guard-ported into Core `PeerDefs.h` |
+| `SetLookAtPlayer(int64_t, UnicodeString)` overload | guard-ported decl (`PersistentStorageDefs.h`) + adapter impl forwarding to the ASCII version (avoids pulling in non-MVP PopupPlayerInfo rewrite) |
+| link: `updateBuddyInfo(bool,bool)` / `showNotificationBox(...,bool)` | guarded forwarding overloads in WOLBuddyOverlay.cpp (non-MVP social overlay left unported) |
+
+Deferred (recorded in HOOK_POINTS.md T4.1f): all `[verify]`-tagged in-match /
+60Hz-render / sim-math hooks (InGameUI, InGameChat, CommandXlat, SelectionXlat,
+Weapon, EMPUpdate, registry, OptionsMenu, ww3d) — Phase 5/6.
+
+**Milestone met:** macOS builds and links with `SAGE_GENERALS_ONLINE=ON`; the
+game boots to the main menu with the option **ON and OFF**; the online entry
+point is present and wired to the ported NGMP login/lobby UI (network calls not
+yet exercised — that's T4.2/T4.3).
+
+## Phase 4 — T4.2 backend URL + T4.3 auth (2026-07-09)
+
+**T4.2 — configurable services URL (done).** `NGMP_OnlineServicesManager::GetAPIEndpoint`
+resolved its host at compile time from `g_Environment` (DEV localhost / TEST /
+PROD `api.playgenerals.online`); RelWithDebInfo defaulted to the official PROD
+pool. Rewrote it to resolve the base URL at runtime: env var
+`GENERALSX_ONLINE_URL` overrides, default `https://localhost:9000/env/prod/contract/1`
+(the self-hosted instance). TLS needs nothing extra — HTTPRequest already
+disables peer/host verification when no `cacert.pem` is present, so the
+backend's ASP.NET dev cert is accepted. Verified: with `-onlineAutostart` the
+client's `VersionCheck` hit the self-hosted backend and got **200**.
+
+**T4.3 — friends-scale login without the launcher (done).** The stock flow polls
+`CheckLogin` waiting for a launcher/web login (`pending_logins`). BeginLogin
+already supports a token path (`GetCredentials` → POST `LoginWithToken`); it just
+had no token to use. Added an env-var source to `GetCredentials`:
+`GENERALSX_ONLINE_REFRESH_TOKEN` supplies a pre-minted refresh token (the minimum
+replacement for the launcher). Recreated the HS256 mint script from the T1.4
+contract at `scripts/go-online/mint_refresh_token.py` (Python stdlib; takes the
+DB `user_id`, displayname, and `JwtSettings.Key`). Verified end-to-end against
+the self-hosted backend with seeded user 34621 "nathan": `LoginWithToken` → 200,
+`LOGIN: Logged in`, `[WebSocket] Connected` (wss://…/ws), `MOTD` 200, shell
+advanced to `WOLWelcomeMenu` → `WOLCustomLobby.wnd`, and `Rooms` → 200 with the
+live room list (all games / general / 1v1 / 2v2 / no rules / pro rules / RotR).
+
+**Test hook — `-onlineAutostart`.** New command-line flag (guarded) that enters
+the online flow at the main menu (stage 1) and advances the welcome screen to the
+custom lobby (stage 2), so login/lobby can be exercised headlessly. Files:
+`CommandLine.cpp`, `MainMenu.cpp` (MainMenuUpdate), `WOLWelcomeMenu.cpp`
+(WOLWelcomeMenuUpdate).
+
+**NGMP-flow null-deref fixes (GameSpy scaffolding reused without a GameSpy login).**
+The online flow constructs GameSpy-era objects before `TheGameSpyInfo`/`TheGameSpyConfig`
+exist (they're only created by `SetUpGameSpy`, which the NGMP path never calls —
+matching their fork, which `#if !defined(GENERALS_ONLINE)`-guards that call).
+Each was hanging on a virtual call through a null pointer during `Init()` /
+welcome-menu init; guarded with the stock defaults / an early return:
+- `RankPoints::RankPoints()` (PopupPlayerInfo.cpp) — hardcoded rank thresholds when `TheGameSpyConfig==nullptr`.
+- `LadderList::LadderList()` (Core LadderDefs.cpp) — empty ladder list when `TheGameSpyConfig==nullptr` (ladders non-MVP).
+- `PopulatePlayerInfoWindows()` (PopupPlayerInfo.cpp) — skip the legacy GameSpy stats panel when `TheGameSpyInfo==nullptr` (NGMP has its own stats; their fork ships an NGMP-aware version we didn't port).
+
+**Boundary to Phase 5:** after the room list renders, the client auto-joins the
+default room to populate the per-room staging/game list; sampling shows the
+join-complete callback (`RoomsInterface::JoinRoom` → WOLLobbyMenuInit lambda)
+pinned — that room-join/game-list population is where Phase 5 (join/host a match)
+begins.

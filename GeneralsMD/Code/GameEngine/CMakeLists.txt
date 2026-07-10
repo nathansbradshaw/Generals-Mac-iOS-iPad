@@ -1174,7 +1174,9 @@ if(SAGE_GENERALS_ONLINE)
         GameNetworkingSockets::GameNetworkingSockets_s
         CURL::libcurl
     )
-    target_compile_definitions(z_gameengine PUBLIC SAGE_GENERALS_ONLINE=1)
+    # Their build defines GENERALS_ONLINE globally (add_compile_definitions);
+    # hook-point code uses it without including NextGenMP_defines.h.
+    target_compile_definitions(z_gameengine PUBLIC SAGE_GENERALS_ONLINE=1 GENERALS_ONLINE)
 endif()
 
 target_include_directories(z_gameengine PUBLIC

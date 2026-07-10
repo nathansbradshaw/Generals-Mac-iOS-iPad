@@ -32,6 +32,11 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/STLTypedefs.h"
+#if defined(SAGE_GENERALS_ONLINE)
+#include "../NGMP_types.h"
+
+void NGMP_WOLLoginMenu_LoginCallback(ELoginResult loginResult);
+#endif // SAGE_GENERALS_ONLINE
 
 #include "Common/file.h"
 #include "Common/FileSystem.h"
@@ -68,6 +73,9 @@
 #include "GameNetwork/GameSpyOverlay.h"
 
 #include "GameNetwork/WOLBrowser/WebBrowser.h"
+#if defined(SAGE_GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
+#endif // SAGE_GENERALS_ONLINE
 
 
 #ifdef ALLOW_NON_PROFILED_LOGIN
@@ -449,6 +457,80 @@ void WOLLoginMenuInit( WindowLayout *layout, void *userData )
 	isShuttingDown = false;
 	loginAttemptTime = 0;
 
+#if defined(SAGE_GENERALS_ONLINE)
+	// NGMP
+	ClearGSMessageBoxes();
+	GSMessageBoxNoButtons(UnicodeString(L"Logging In"), UnicodeString(L"Please wait..."), true);
+
+	// NGMP: Register for login callback
+	NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
+	if (pAuthInterface == nullptr)
+	{
+		return;
+	}
+
+	// Now we can begin login
+	pAuthInterface->RegisterForLoginCallback(NGMP_WOLLoginMenu_LoginCallback);
+	pAuthInterface->BeginLogin();
+
+
+	/*
+	if (!loginPref)
+	{
+		loginPref = NEW GameSpyLoginPreferences;
+	}
+
+	// if the ESRB warning is blank (other country) hide the box
+	GameWindow *esrbTitle = TheWindowManager->winGetWindowFromId( nullptr, NAMEKEY("GameSpyLoginProfile.wnd:StaticTextESRBTop") );
+	GameWindow *esrbParent = TheWindowManager->winGetWindowFromId( nullptr, NAMEKEY("GameSpyLoginProfile.wnd:ParentESRB") );
+	if (esrbTitle && esrbParent)
+	{
+		if ( GadgetStaticTextGetText( esrbTitle ).getLength() < 2 )
+		{
+			esrbParent->winHide(TRUE);
+		}
+	}
+
+
+	parentWOLLoginID =						TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:WOLLoginMenuParent" );
+	buttonBackID =								TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:ButtonBack" );
+	buttonLoginID =								TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:ButtonLogin" );
+	buttonCreateAccountID =				TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:ButtonCreateAccount" );
+	buttonUseAccountID =					TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:ButtonUseAccount" );
+	buttonDontUseAccountID =			TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:ButtonDontUseAccount" );
+	buttonTOSID							=			TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:ButtonTOS" );
+	parentTOSID							=			TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:ParentTOS" );
+	buttonTOSOKID						=			TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:ButtonTOSOK" );
+	listboxTOSID						=			TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:ListboxTOS" );
+	comboBoxEmailID =							TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:ComboBoxEmail" );
+	comboBoxLoginNameID =					TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:ComboBoxLoginName" );
+	textEntryLoginNameID =				TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:TextEntryLoginName" );
+	textEntryPasswordID =					TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:TextEntryPassword" );
+	checkBoxRememberPasswordID =	TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:CheckBoxRememberInfo" );
+	textEntryMonthID =					TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:TextEntryMonth" );
+	textEntryDayID =					TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:TextEntryDay" );
+	textEntryYearID =					TheNameKeyGenerator->nameToKey( "GameSpyLoginProfile.wnd:TextEntryYear" );
+
+	parentWOLLogin =							TheWindowManager->winGetWindowFromId( nullptr,  parentWOLLoginID );
+	buttonBack =									TheWindowManager->winGetWindowFromId( nullptr,  buttonBackID);
+	buttonLogin =									TheWindowManager->winGetWindowFromId( nullptr,  buttonLoginID);
+	buttonCreateAccount =					TheWindowManager->winGetWindowFromId( nullptr,  buttonCreateAccountID);
+	buttonUseAccount =						TheWindowManager->winGetWindowFromId( nullptr,  buttonUseAccountID);
+	buttonDontUseAccount =				TheWindowManager->winGetWindowFromId( nullptr,  buttonDontUseAccountID);
+	buttonTOS =										TheWindowManager->winGetWindowFromId( nullptr,  buttonTOSID);
+	parentTOS =										TheWindowManager->winGetWindowFromId( nullptr,  parentTOSID);
+	buttonTOSOK =									TheWindowManager->winGetWindowFromId( nullptr,  buttonTOSOKID);
+	listboxTOS =									TheWindowManager->winGetWindowFromId( nullptr,  listboxTOSID);
+	comboBoxEmail =								TheWindowManager->winGetWindowFromId( nullptr,  comboBoxEmailID);
+	comboBoxLoginName =						TheWindowManager->winGetWindowFromId( nullptr,  comboBoxLoginNameID);
+	textEntryLoginName =					TheWindowManager->winGetWindowFromId( nullptr,  textEntryLoginNameID);
+	textEntryPassword =						TheWindowManager->winGetWindowFromId( nullptr,  textEntryPasswordID);
+	checkBoxRememberPassword =		TheWindowManager->winGetWindowFromId( nullptr,  checkBoxRememberPasswordID);
+	textEntryMonth =					TheWindowManager->winGetWindowFromId( nullptr,  textEntryMonthID);
+	textEntryDay =					TheWindowManager->winGetWindowFromId( nullptr,  textEntryDayID);
+	textEntryYear =					TheWindowManager->winGetWindowFromId( nullptr,  textEntryYearID);
+	*/
+#else
 	if (!loginPref)
 	{
 		loginPref = NEW GameSpyLoginPreferences;
@@ -708,11 +790,16 @@ void WOLLoginMenuInit( WindowLayout *layout, void *userData )
 		GadgetTextEntrySetText(textEntryLoginName, nick);
 	}
 #endif // ALLOW_NON_PROFILED_LOGIN
+#endif
 
 	EnableLoginControls(TRUE);
 
 	// Show Menu
+#if defined(SAGE_GENERALS_ONLINE)
+	layout->hide( TRUE );
+#else
 	layout->hide( FALSE );
+#endif
 
 	// Set Keyboard to Main Parent
 
@@ -734,6 +821,15 @@ void WOLLoginMenuInit( WindowLayout *layout, void *userData )
 static Bool loggedInOK = false;
 void WOLLoginMenuShutdown( WindowLayout *layout, void *userData )
 {
+#if defined(SAGE_GENERALS_ONLINE)
+	NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
+	if (pAuthInterface != nullptr)
+	{
+		pAuthInterface->DeregisterForLoginCallback();
+	}
+
+
+#endif // SAGE_GENERALS_ONLINE
 	isShuttingDown = true;
 	loggedInOK = false;
 	TheWindowManager->clearTabList();
@@ -765,6 +861,90 @@ void WOLLoginMenuShutdown( WindowLayout *layout, void *userData )
 // this is used to check if we've got all the pings
 static void checkLogin()
 {
+#if defined(SAGE_GENERALS_ONLINE)
+	if (loggedInOK)
+	{
+		buttonPushed = true;
+		loggedInOK = false; // don't try this again
+
+		loginAttemptTime = 0;
+
+		SignalUIInteraction(SHELL_SCRIPT_HOOK_GENERALS_ONLINE_LOGIN);
+		nextScreen = "Menus/WOLWelcomeMenu.wnd";
+		TheShell->pop();
+	}
+
+	/*
+	if (loggedInOK && ThePinger && !ThePinger->arePingsInProgress())
+	{
+		// save off our ping string, and end those threads
+		AsciiString pingStr = ThePinger->getPingString( 1000 );
+		DEBUG_LOG(("Ping string is %s", pingStr.str()));
+		TheGameSpyInfo->setPingString(pingStr);
+		//delete ThePinger;
+		//ThePinger = nullptr;
+
+		buttonPushed = true;
+		loggedInOK = false; // don't try this again
+
+		loginAttemptTime = 0;
+
+		// start looking for group rooms
+		TheGameSpyInfo->clearGroupRoomList();
+
+		SignalUIInteraction(SHELL_SCRIPT_HOOK_GENERALS_ONLINE_LOGIN);
+		nextScreen = "Menus/WOLWelcomeMenu.wnd";
+		TheShell->pop();
+
+		// read in some cached data
+		GameSpyMiscPreferences mPref;
+		PSPlayerStats localPSStats = GameSpyPSMessageQueueInterface::parsePlayerKVPairs(mPref.getCachedStats().str());
+		localPSStats.id = TheGameSpyInfo->getLocalProfileID();
+		TheGameSpyInfo->setCachedLocalPlayerStats(localPSStats);
+//		TheGameSpyPSMessageQueue->trackPlayerStats(localPSStats);
+
+		// and push the info around to other players
+//		PSResponse newResp;
+//		newResp.responseType = PSResponse::PSRESPONSE_PLAYERSTATS;
+//		newResp.player = localPSStats;
+//		TheGameSpyPSMessageQueue->addResponse(newResp);
+	}
+	*/
+}
+
+void NGMP_WOLLoginMenu_LoginCallback(ELoginResult loginResult)
+{
+	if (!buttonPushed)
+	{
+		// TODO_NGMP: Handle failure properly
+		if (loginResult == ELoginResult::Success)
+		{
+			ClearGSMessageBoxes();
+			loggedInOK = true;
+
+			checkLogin();
+		}
+		else
+		{
+			if (loginResult == ELoginResult::Failed)
+			{
+                GSMessageBoxOk(UnicodeString(L"Logging In"), UnicodeString(L"Login failed."), []()
+                    {
+                        TheShell->pop();
+                    });
+			}
+            else if (loginResult == ELoginResult::UserCancelled)
+            {
+                // User requested, nothing to do here
+            }
+
+			
+		}
+
+	}
+}
+
+#else
 	if (loggedInOK && ThePinger && !ThePinger->arePingsInProgress())
 	{
 		// save off our ping string, and end those threads
@@ -800,6 +980,7 @@ static void checkLogin()
 //		TheGameSpyPSMessageQueue->addResponse(newResp);
 	}
 }
+#endif
 
 //-------------------------------------------------------------------------------------------------
 /** WOL Login Menu update method */
@@ -811,6 +992,99 @@ void WOLLoginMenuUpdate( WindowLayout * layout, void *userData)
 	if(isShuttingDown && TheShell->isAnimFinished() && TheTransitionHandler->isFinished())
 		shutdownComplete(layout);
 
+#if defined(SAGE_GENERALS_ONLINE)
+	/*
+	if (TheShell->isAnimFinished() && !buttonPushed && TheGameSpyPeerMessageQueue)
+	{
+		PingResponse pingResp;
+		if (ThePinger && ThePinger->getResponse(pingResp))
+		{
+			checkLogin();
+		}
+
+		PeerResponse resp;
+		if (!loggedInOK && TheGameSpyPeerMessageQueue->getResponse( resp ))
+		{
+			switch (resp.peerResponseType)
+			{
+			case PeerResponse::PEERRESPONSE_GROUPROOM:
+				{
+					GameSpyGroupRoom room;
+					room.m_groupID = resp.groupRoom.id;
+					room.m_maxWaiting = resp.groupRoom.maxWaiting;
+					room.m_name = resp.groupRoomName.c_str();
+					room.m_translatedName = L"TEST";
+					room.m_numGames = resp.groupRoom.numGames;
+					room.m_numPlaying = resp.groupRoom.numPlaying;
+					room.m_numWaiting = resp.groupRoom.numWaiting;
+					TheGameSpyInfo->addGroupRoom( room );
+				}
+				break;
+			case PeerResponse::PEERRESPONSE_LOGIN:
+				{
+					loggedInOK = true;
+
+					// fetch our player info
+					TheGameSpyInfo->setLocalName( resp.nick.c_str() );
+					TheGameSpyInfo->setLocalProfileID( resp.player.profileID );
+					TheGameSpyInfo->loadSavedIgnoreList();
+					TheGameSpyInfo->setLocalIPs(resp.player.internalIP, resp.player.externalIP);
+					TheGameSpyInfo->readAdditionalDisconnects();
+					//TheGameSpyInfo->setLocalEmail( resp.player.email );
+					//TheGameSpyInfo->setLocalPassword( resp)
+
+					GameSpyMiscPreferences miscPref;
+					TheGameSpyInfo->setMaxMessagesPerUpdate(miscPref.getMaxMessagesPerUpdate());
+				}
+				break;
+			case PeerResponse::PEERRESPONSE_DISCONNECT:
+				{
+					loginAttemptTime = 0;
+					UnicodeString title, body;
+					AsciiString disconMunkee;
+					disconMunkee.format("GUI:GSDisconReason%d", resp.discon.reason);
+					title = TheGameText->fetch( "GUI:GSErrorTitle" );
+					body = TheGameText->fetch( disconMunkee );
+					GSMessageBoxOk( title, body );
+					EnableLoginControls( TRUE );
+
+					// kill & restart the threads
+					AsciiString motd = TheGameSpyInfo->getMOTD();
+					AsciiString config = TheGameSpyInfo->getConfig();
+					DEBUG_LOG(("Tearing down GameSpy from WOLLoginMenuUpdate(PEERRESPONSE_DISCONNECT)"));
+					TearDownGameSpy();
+					SetUpGameSpy( motd.str(), config.str() );
+				}
+				break;
+			}
+		}
+
+		checkLogin();
+	}
+
+
+	if (TheGameSpyInfo && !buttonPushed && loginAttemptTime && (loginAttemptTime + loginTimeoutInMS < timeGetTime()))
+	{
+		// timed out a login attempt, so say so
+		loginAttemptTime = 0;
+		UnicodeString title, body;
+		AsciiString disconMunkee;
+		disconMunkee.format("GUI:GSDisconReason4");	// ("could not connect to server")
+		title = TheGameText->fetch( "GUI:GSErrorTitle" );
+		body = TheGameText->fetch( disconMunkee );
+		GSMessageBoxOk( title, body );
+		EnableLoginControls( TRUE );
+
+		// kill & restart the threads
+		AsciiString motd = TheGameSpyInfo->getMOTD();
+		AsciiString config = TheGameSpyInfo->getConfig();
+		DEBUG_LOG(("Tearing down GameSpy from WOLLoginMenuUpdate(login timeout)"));
+		TearDownGameSpy();
+		SetUpGameSpy( motd.str(), config.str() );
+	}
+	*/
+	// TODO_NGMP: Add login timeout again
+#else
 	if (TheShell->isAnimFinished() && !buttonPushed && TheGameSpyPeerMessageQueue)
 	{
 		PingResponse pingResp;
@@ -898,6 +1172,7 @@ void WOLLoginMenuUpdate( WindowLayout * layout, void *userData)
 		TearDownGameSpy();
 		SetUpGameSpy( motd.str(), config.str() );
 	}
+#endif
 
 }
 

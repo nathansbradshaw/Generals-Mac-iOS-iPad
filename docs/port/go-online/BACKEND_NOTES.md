@@ -63,3 +63,22 @@ So the game client (T4.3) only needs: a stored refresh token (config/ini),
 LoginWithToken call, then session-token auth + websocket connect. Their enum
 `custom_third_party_client=5` exists precisely for clients like ours.
 Session-type enum: GameClient=0, ChatClient=1, GameLauncher=2.
+
+## T4.2/T4.3 client wiring (2026-07-09)
+
+- Client services base URL is now runtime-configurable (was compile-time PROD):
+  env `GENERALSX_ONLINE_URL`, default `https://localhost:9000/env/prod/contract/1`.
+  Our self-hosted backend serves the `/env/prod/contract/1/` path (the verified
+  T1.4 flow used it). TLS: the client disables curl peer/host verification when
+  no `cacert.pem` is present, so the ASP.NET dev cert is accepted as-is.
+- Login without the launcher: supply a pre-minted refresh token via env
+  `GENERALSX_ONLINE_REFRESH_TOKEN`. Mint with
+  `scripts/go-online/mint_refresh_token.py --user-id <id> --name <displayname> --key <JwtSettings.Key>`.
+  Our appsettings: Issuer `go-lan`, Audience `go-lan-clients` (script defaults).
+- Seeded users (DB `users`): 34621 `nathan`, 34622 `friend1` (account_type 0, active 1).
+- Client reads a credentials file at
+  `~/Library/Application Support/GeneralsX/GeneralsZH/GeneralsOnlineData/credentials.json`
+  (`{"refresh_token": "..."}`, plaintext off-Windows) — the env var takes
+  precedence over it.
+- Headless exercise: `./run.sh -win -onlineAutostart` with the env vars set drives
+  main-menu → login → welcome → custom lobby automatically.

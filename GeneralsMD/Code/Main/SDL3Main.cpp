@@ -62,6 +62,12 @@
 #include "Common/version.h"  // GeneralsX @bugfix BenderAI 14/02/2026 Version class + TheVersion extern
 #include "SDL3GameEngine.h"
 
+#if defined(SAGE_GENERALS_ONLINE)
+#include "BuildVersion.h"
+#include "GeneratedVersion.h"
+#include "GameNetwork/GeneralsOnline/NextGenMP_defines.h"
+#endif
+
 // DXVK WSI
 #define DXVK_WSI_SDL3 1
 #include <wsi/native_wsi.h>
@@ -448,6 +454,19 @@ int main(int argc, char* argv[])
 		// GameEngine::init() calls updateWindowTitle() which uses TheVersion
 		// Must be created before GameMain() to avoid nullptr dereference
 		TheVersion = NEW Version;
+
+#if defined(SAGE_GENERALS_ONLINE)
+		// NOTE: their WinMain calls NGMP_OnlineServicesManager::AttemptLoadSteam()
+		// here, but that path calls NetworkLog before TheGlobalData exists (hangs),
+		// and Steam is cut from the friends-scale MVP — so it is intentionally
+		// omitted. See docs/port/go-online/HOOK_POINTS.md.
+
+		// GeneralsOnline version gate: lobby/match compatibility compares these
+		// fields (mirrors their WinMain.cpp; TODO_NGMP upstream: better solution)
+		TheVersion->setVersion(VERSION_MAJOR, VERSION_MINOR, GENERALS_ONLINE_VERSION, GENERALS_ONLINE_NET_VERSION,
+			AsciiString("Generals Online Development Team"), AsciiString(""),
+			AsciiString(__TIME__), AsciiString(__DATE__));
+#endif
 
 		// Parse command line (CommandLine class handles argc/argv internally)
 		// TheSuperHackers @build felipebraz 10/02/2026 Phase 1.5

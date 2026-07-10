@@ -431,6 +431,18 @@ Int parseHeadless(char *args[], int num)
 	return 1;
 }
 
+#if defined(SAGE_GENERALS_ONLINE)
+// GeneralsX friends-scale/CI test hook: auto-enter the online flow at the main
+// menu without a manual click, so login against a self-hosted backend can be
+// exercised headlessly. See MainMenu.cpp MainMenuUpdate.
+Int parseOnlineAutostart(char *args[], int num)
+{
+	extern Bool g_GeneralsXOnlineAutostart;
+	g_GeneralsXOnlineAutostart = TRUE;
+	return 1;
+}
+#endif
+
 Int parseReplay(char *args[], int num)
 {
 	if (num > 1)
@@ -1150,6 +1162,10 @@ static CommandLineParam paramsForStartup[] =
 	// TheSuperHackers @feature helmutbuhler 11/04/2025
 	// This runs the game without a window, graphics, input and audio. You can combine this with -replay
 	{ "-headless", parseHeadless },
+
+#if defined(SAGE_GENERALS_ONLINE)
+	{ "-onlineAutostart", parseOnlineAutostart },
+#endif
 
 	// TheSuperHackers @feature helmutbuhler 13/04/2025
 	// Play back a replay. Pass the filename including .rep afterwards.

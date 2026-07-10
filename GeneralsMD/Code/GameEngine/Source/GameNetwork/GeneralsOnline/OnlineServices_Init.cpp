@@ -231,25 +231,29 @@ NGMP_OnlineServicesManager::NGMP_OnlineServicesManager()
 
 std::string NGMP_OnlineServicesManager::GetAPIEndpoint(const char* szEndpoint)
 {
-	if (g_Environment == EEnvironment::DEV)
-	{
-		return std::format("https://localhost:9000/env/dev/contract/1/{}", szEndpoint);
-	}
-	else if (g_Environment == EEnvironment::TEST)
-	{
-		return std::format("https://api.playgenerals.online:2087/env/test/contract/1/{}", szEndpoint);
-	}
-	else // PROD
-	{
-		if (NGMP_OnlineServicesManager::Settings.Network_UseAlternativeEndpoint())
+	// GeneralsX @feature friends-scale self-hosting: resolve the services base
+	// URL at runtime so a self-hosted backend (localhost, or the host friend's
+	// LAN/VPN IP) can be targeted without a rebuild. The env var
+	// GENERALSX_ONLINE_URL overrides; the default is the local self-hosted
+	// instance verified in docs/port/go-online/BACKEND_NOTES.md. The upstream
+	// compile-time official-pool hosts (api.playgenerals.online, gated on
+	// g_Environment) are intentionally not used here — official-pool
+	// compatibility is a non-goal for this fork (see the integration plan).
+	static const std::string s_baseURL = []() -> std::string {
+		const char* pEnv = getenv("GENERALSX_ONLINE_URL");
+		std::string base = (pEnv != nullptr && pEnv[0] != '\0')
+			? std::string(pEnv)
+			: std::string("https://localhost:9000/env/prod/contract/1");
+		// tolerate a trailing slash in the configured value
+		while (!base.empty() && base.back() == '/')
 		{
-			return std::format("https://api-ru.playgenerals.online/env/prod/contract/1/{}", szEndpoint);
+			base.pop_back();
 		}
-		else
-		{
-			return std::format("https://api.playgenerals.online/env/prod/contract/1/{}", szEndpoint);
-		}
-	}
+		NetworkLog(ELogVerbosity::LOG_RELEASE, "[GeneralsX] Online services base URL: %s", base.c_str());
+		return base;
+	}();
+
+	return std::format("{}/{}", s_baseURL, szEndpoint);
 }
 
 void NGMP_OnlineServicesManager::AttemptLoadSteam()

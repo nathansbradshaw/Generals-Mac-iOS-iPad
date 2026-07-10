@@ -61,47 +61,62 @@ then cross-platform with Windows/Linux friends.
 
 ## Phase 0 — Recon
 
-- [ ] Add `references/generalsonline-gameclient` submodule (their fork) for diffing.
-- [ ] Produce the authoritative diff of their NGMP subtree + hook points vs
-      their upstream base.
-- [ ] License audit: confirm the client code we import is GPLv3-compatible.
+- [x] Add `references/generalsonline-gameclient` submodule (their fork) for diffing.
+- [x] Produce the authoritative diff of their NGMP subtree + hook points vs
+      their upstream base. (`NGMP_FILE_INVENTORY.md`, `HOOK_POINTS.md`)
+- [x] License audit: confirm the client code we import is GPLv3-compatible. (`LICENSES.md`)
 - [ ] (Courtesy, not a gate) say hi to the GeneralsOnline team — we're reusing
       their code at friends-scale and offering portability patches back.
 
 ## Phase 1 — Self-hosted backend
 
-- [ ] Stand up their `Services` backend locally (macOS or a cheap Linux box):
+- [x] Stand up their `Services` backend locally (macOS or a cheap Linux box):
       MariaDB + .NET 10, import their SQL schema, fill `appsettings.json`.
+      (friends-scale auth verified against the live backend — `BACKEND_NOTES.md`)
 - [ ] Point a stock Windows GeneralsOnline client at it to prove the backend
-      works before any of our code enters the picture.
-- [ ] Skip: Discord app ID, S3, EasyAntiCheat — not needed at friends-scale.
+      works before any of our code enters the picture. *(deferred — MVP clients
+      are built from this fork, so this proves nothing on the critical path)*
+- [x] Skip: Discord app ID, S3, EasyAntiCheat — not needed at friends-scale.
       STUN/TURN only if friends aren't on the same LAN/VPN.
 
 ## Phase 2 — Dependencies build on macOS/iOS
 
-- [ ] GameNetworkingSockets via vcpkg for `arm64-osx` and `arm64-ios`
+- [x] GameNetworkingSockets via vcpkg for `arm64-osx` and `arm64-ios`
       (watch the crypto backend on iOS — OpenSSL vs Apple crypto).
-- [ ] libcurl: already in our vcpkg graph — verify features (TLS; websockets
-      if their client uses it).
-- [ ] Drop: sentry, anti-cheat plugins.
+- [x] libcurl: already in our vcpkg graph — verify features (TLS; websockets
+      if their client uses it). (`DEPS_NOTES.md`)
+- [x] Drop: sentry, anti-cheat plugins. (sentry → no-op stub header; AC plugin
+      interface left undefined)
 
 ## Phase 3 — Import NGMP subtree (compile-only milestone)
 
-- [ ] Copy `GameNetwork/GeneralsOnline/**` into our tree behind a CMake option
+- [x] Copy `GameNetwork/GeneralsOnline/**` into our tree behind a CMake option
       (`SAGE_GENERALS_ONLINE`, default OFF).
-- [ ] Port Win32-isms (threads, sockets init, wide strings, registry,
+- [x] Port Win32-isms (threads, sockets init, wide strings, registry,
       `GetUserName…`) to the CompatLib patterns this port already uses.
-- [ ] Milestone: compiles + links on macOS with the option ON; game still
-      boots with it OFF.
+- [x] Milestone: compiles + links on macOS with the option ON; game still
+      boots with it OFF. (`PORTING_LOG.md`)
 
 ## Phase 4 — Hook points + auth flow
 
-- [ ] Wire their menu/overlay hooks (MainMenu, GameSpyOverlay, staging rooms) —
+- [x] Wire their menu/overlay hooks (MainMenu, GameSpyOverlay, staging rooms) —
       smallest possible hook set, matching how their fork replaces GameSpy.
-- [ ] Auth against *our* backend: understand `OnlineServices_Auth`; their
+      *(T4.1: custom-match-path hooks ported behind `SAGE_GENERALS_ONLINE`;
+      builds + links ON, boots to main menu ON and OFF, Online entry point
+      reaches the ported NGMP login/lobby UI. In-match/60Hz/sim-math `[verify]`
+      hooks deferred to Phase 5/6 — see `HOOK_POINTS.md` + `PORTING_LOG.md`.)*
+- [x] Auth against *our* backend: understand `OnlineServices_Auth`; their
       Windows launcher handles login/update — decide what replaces it here
       (in-game UI; no external browser on iOS).
-- [ ] Milestone: log in, see lobby list, chat — macOS first.
+      *(T4.2: services URL runtime-configurable via `GENERALSX_ONLINE_URL`,
+      defaults to the self-hosted instance; VersionCheck verified 200. T4.3:
+      launcher replaced by a pre-minted refresh token supplied via
+      `GENERALSX_ONLINE_REFRESH_TOKEN` — `scripts/go-online/mint_refresh_token.py`;
+      LoginWithToken verified 200, WebSocket connected. See PORTING_LOG.md.)*
+- [~] Milestone: log in, see lobby list, chat — macOS first.
+      *(Log in ✓, lobby room list renders ✓ (Rooms → 200, live room list). Chat
+      and the per-room staging/game list run into the room-join flow that opens
+      Phase 5.)*
 
 ## Phase 5 — Apple↔Apple match flow
 

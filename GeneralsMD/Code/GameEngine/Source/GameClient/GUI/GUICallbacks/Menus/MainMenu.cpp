@@ -74,6 +74,9 @@
 #include "GameNetwork/GameSpy/MainMenuUtils.h"
 
 #include "GameClient/InGameUI.h"
+#if defined(SAGE_GENERALS_ONLINE)
+#include "../OnlineServices_Init.h"
+#endif // SAGE_GENERALS_ONLINE
 
 // GeneralsX @feature BenderAI 21/04/2026 In-game update checker for tagged release builds
 #ifdef SAGE_UPDATE_CHECK
@@ -158,6 +161,13 @@ static GameWindow *buttonMOTD = nullptr;
 static GameWindow *buttonWorldBuilder = nullptr;
 static GameWindow *mainMenuMovie = nullptr;
 static GameWindow *getUpdate = nullptr;
+#if defined(SAGE_GENERALS_ONLINE)
+// Set by the -onlineAutostart command-line flag: fire the Online entry path
+// once the main menu is up, no manual click. Friends-scale / CI test hook so
+// the online flow (backend requests, login) can be exercised headlessly.
+Bool g_GeneralsXOnlineAutostart = FALSE;
+static Bool s_onlineAutostartFired = FALSE;
+#endif
 #ifdef SAGE_UPDATE_CHECK
 static GameWindow *updateNotifyButton = nullptr;  // GeneralsX @feature BenderAI 21/04/2026 Dynamically created update notification button
 static AsciiString s_updateLatestTag;             // Tag of available update
@@ -228,6 +238,10 @@ extern Bool dispChanged;
 void diffReverseSide();
 void HandleCanceledDownload( Bool resetDropDown )
 {
+#if defined(SAGE_GENERALS_ONLINE)
+	NGMP_OnlineServicesManager::GetInstance()->CancelUpdate();
+
+#endif // SAGE_GENERALS_ONLINE
 	buttonPushed = FALSE;
 	if (resetDropDown)
 	{
@@ -272,7 +286,11 @@ static void quitCallback()
 
 	}
 	if (TheGameLogic->isInGame())
+#if defined(SAGE_GENERALS_ONLINE)
+		TheMessageStream->appendMessage( GameMessage::MSG_CLEAR_GAME_DATA );
+#else
 		TheGameLogic->exitGame();
+#endif
 }
 
 
@@ -993,6 +1011,17 @@ void MainMenuUpdate( WindowLayout *layout, void *userData )
 		RaiseGSMessageBox();
 		raiseMessageBoxes = FALSE;
 	}
+
+#if defined(SAGE_GENERALS_ONLINE)
+	// -onlineAutostart: enter the online flow once, as if the Online button was
+	// clicked, after the menu has finished initializing (buttonOnline present).
+	if (g_GeneralsXOnlineAutostart && !s_onlineAutostartFired && buttonOnline != nullptr)
+	{
+		s_onlineAutostartFired = TRUE;
+		DEBUG_LOG(("[GeneralsX] -onlineAutostart: entering online flow"));
+		StartPatchCheck();
+	}
+#endif
 
 	HTTPThinkWrapper();
 	GameSpyUpdateOverlays();

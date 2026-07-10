@@ -68,7 +68,15 @@ static NameKeyType buttonMapStartPositionID[MAX_SLOTS] = { NAMEKEY_INVALID,NAMEK
 
 static GameWindow *winMapWindow = nullptr;
 
+#if defined(SAGE_GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
+#include "GameNetwork/GeneralsOnline/NGMPGame.h"
+extern NGMPGame* TheNGMPGame;
+
+static void NullifyControls(void)
+#else
 static void NullifyControls()
+#endif
 {
 	parent = nullptr;
 	mapList = nullptr;
@@ -136,15 +144,28 @@ void WOLMapSelectMenuInit( WindowLayout *layout, void *userData )
 	winMapPreviewID = TheNameKeyGenerator->nameToKey( "WOLMapSelectMenu.wnd:WinMapPreview" );
 	winMapPreview = TheWindowManager->winGetWindowFromId(parent, winMapPreviewID);
 
+#if defined(SAGE_GENERALS_ONLINE)
+	const MapMetaData *mmd = TheMapCache->findMap(TheNGMPGame->getMap());
+#else
 	const MapMetaData *mmd = TheMapCache->findMap(TheGameSpyGame->getMap());
+#endif
 	if (mmd)
 	{
 		usesSystemMapDir = mmd->m_isOfficial;
 	}
 
+#if defined(SAGE_GENERALS_ONLINE)
+#if !defined(GENERALS_ONLINE_ALLOW_ALL_SETTINGS_FOR_STATS_MATCHES)
+	bool bUseStats = TheNGMPGame->getUseStats();
+	//if stats are enabled, only official maps can be used
+	if(bUseStats)
+		usesSystemMapDir = true;
+#endif
+#else
 	//if stats are enabled, only official maps can be used
 	if( TheGameSpyInfo->getCurrentStagingRoom()->getUseStats() )
 		usesSystemMapDir = true;
+#endif
 
 	buttonBack = TheNameKeyGenerator->nameToKey( "WOLMapSelectMenu.wnd:ButtonBack" );
 	buttonOK = TheNameKeyGenerator->nameToKey( "WOLMapSelectMenu.wnd:ButtonOK" );
@@ -153,6 +174,22 @@ void WOLMapSelectMenuInit( WindowLayout *layout, void *userData )
 	radioButtonUserMapsID = TheNameKeyGenerator->nameToKey( "WOLMapSelectMenu.wnd:RadioButtonUserMaps" );
 	winMapWindow = TheWindowManager->winGetWindowFromId( parent, listboxMap );
 
+#if defined(SAGE_GENERALS_ONLINE)
+#if !defined(GENERALS_ONLINE_ALLOW_ALL_SETTINGS_FOR_STATS_MATCHES)
+	GameWindow *radioButtonSystemMaps = TheWindowManager->winGetWindowFromId( parent, radioButtonSystemMapsID );
+	GameWindow *radioButtonUserMaps = TheWindowManager->winGetWindowFromId( parent, radioButtonUserMapsID );
+
+	if (bUseStats)
+	{	//disable unofficial maps if stats are being recorded
+		GadgetRadioSetSelection( radioButtonSystemMaps, FALSE );
+		radioButtonUserMaps->winEnable( FALSE );
+	}
+	else if (usesSystemMapDir)
+		GadgetRadioSetSelection( radioButtonSystemMaps, FALSE );
+	else
+		GadgetRadioSetSelection( radioButtonUserMaps, FALSE );
+#endif
+#else
 	GameWindow *radioButtonSystemMaps = TheWindowManager->winGetWindowFromId( parent, radioButtonSystemMapsID );
 	GameWindow *radioButtonUserMaps = TheWindowManager->winGetWindowFromId( parent, radioButtonUserMapsID );
 	if( TheGameSpyInfo->getCurrentStagingRoom()->getUseStats() )
@@ -165,6 +202,7 @@ void WOLMapSelectMenuInit( WindowLayout *layout, void *userData )
 	else
 		GadgetRadioSetSelection( radioButtonUserMaps, FALSE );
 
+#endif
 	AsciiString tmpString;
 	for (Int i = 0; i < MAX_SLOTS; i++)
 	{
@@ -182,11 +220,22 @@ void WOLMapSelectMenuInit( WindowLayout *layout, void *userData )
 	// get the listbox window
 	NameKeyType mapListID = TheNameKeyGenerator->nameToKey( "WOLMapSelectMenu.wnd:ListboxMap" );
 	mapList = TheWindowManager->winGetWindowFromId( parent, mapListID );
+#if defined(SAGE_GENERALS_ONLINE)
+
+	// NGMP_CHANGE: Show all the maps in the folder, not just the first 1200. This change could be made in the .WND instead, but code is cleaner.
+	// NGMP_BACKPORT: Port this to SH once verified
+	GadgetListBoxSetListLength(mapList, TheMapCache->size());
+	
+#endif // SAGE_GENERALS_ONLINE
 	if( mapList )
 	{
 		if (TheMapCache)
 			TheMapCache->updateCache();
+#if defined(SAGE_GENERALS_ONLINE)
+		populateMapListbox( mapList, usesSystemMapDir, TRUE, TheNGMPGame->getMap() );
+#else
 		populateMapListbox( mapList, usesSystemMapDir, TRUE, TheGameSpyGame->getMap() );
+#endif
 	}
 
 }
@@ -401,7 +450,11 @@ WindowMsgHandledType WOLMapSelectMenuSystem( GameWindow *window, UnsignedInt msg
 			{
 				if (TheMapCache)
 					TheMapCache->updateCache();
+#if defined(SAGE_GENERALS_ONLINE)
+				populateMapListbox( mapList, TRUE, TRUE, TheNGMPGame->getMap() );
+#else
 				populateMapListbox( mapList, TRUE, TRUE, TheGameSpyGame->getMap() );
+#endif
 				CustomMatchPreferences pref;
 				pref.setUsesSystemMapDir(TRUE);
 				pref.write();
@@ -410,7 +463,11 @@ WindowMsgHandledType WOLMapSelectMenuSystem( GameWindow *window, UnsignedInt msg
 			{
 				if (TheMapCache)
 					TheMapCache->updateCache();
+#if defined(SAGE_GENERALS_ONLINE)
+				populateMapListbox( mapList, FALSE, TRUE, TheNGMPGame->getMap() );
+#else
 				populateMapListbox( mapList, FALSE, TRUE, TheGameSpyGame->getMap() );
+#endif
 				CustomMatchPreferences pref;
 				pref.setUsesSystemMapDir(FALSE);
 				pref.write();
@@ -438,11 +495,38 @@ WindowMsgHandledType WOLMapSelectMenuSystem( GameWindow *window, UnsignedInt msg
 						asciiMap = mapFname;
 					else
 						asciiMap.translate( map );
+#if defined(SAGE_GENERALS_ONLINE)
+
+					int newMaxPlayers = -1;
+					AsciiString strMapName;
+					bool bOfficialMap = false;
+
+					TheNGMPGame->setMap(asciiMap);
+#else
 					TheGameSpyGame->setMap(asciiMap);
+#endif
 					asciiMap.toLower();
 					std::map<AsciiString, MapMetaData>::iterator it = TheMapCache->find(asciiMap);
 					if (it != TheMapCache->end())
 					{
+#if defined(SAGE_GENERALS_ONLINE)
+						TheNGMPGame->getGameSpySlot(0)->setMapAvailability(TRUE);
+						TheNGMPGame->setMapCRC( it->second.m_CRC );
+						TheNGMPGame->setMapSize( it->second.m_filesize );
+
+						newMaxPlayers = it->second.m_numPlayers;
+						strMapName.translate(it->second.m_displayName);
+
+						bOfficialMap = it->second.m_isOfficial;
+					}
+
+					TheNGMPGame->adjustSlotsForMap(); // BGC- adjust the slots for the new map.
+					TheNGMPGame->resetAccepted();
+					TheNGMPGame->resetStartSpots();
+
+					// TODO_NGMP:
+					//TheGameSpyInfo->setGameOptions();
+#else
 						TheGameSpyGame->getGameSpySlot(0)->setMapAvailability(TRUE);
 						TheGameSpyGame->setMapCRC( it->second.m_CRC );
 						TheGameSpyGame->setMapSize( it->second.m_filesize );
@@ -452,9 +536,21 @@ WindowMsgHandledType WOLMapSelectMenuSystem( GameWindow *window, UnsignedInt msg
 					TheGameSpyGame->resetAccepted();
 					TheGameSpyGame->resetStartSpots();
 					TheGameSpyInfo->setGameOptions();
+#endif
 
 					WOLDisplaySlotList();
 					WOLDisplayGameOptions();
+#if defined(SAGE_GENERALS_ONLINE)
+
+					// NGMP: Update lobby
+					NGMP_OnlineServices_LobbyInterface* pLobbyInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();
+
+					if (pLobbyInterface != nullptr)
+					{
+						pLobbyInterface->UpdateCurrentLobby_Map(strMapName, TheNGMPGame->getMap(), bOfficialMap, newMaxPlayers);
+					}
+					
+#endif // SAGE_GENERALS_ONLINE
 
 					if (WOLMapSelectLayout)
 					{

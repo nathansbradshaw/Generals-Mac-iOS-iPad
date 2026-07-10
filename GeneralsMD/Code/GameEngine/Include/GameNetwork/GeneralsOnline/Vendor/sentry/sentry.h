@@ -23,7 +23,9 @@ template <typename... A> inline int  sentry_close(A&&...) { return 0; }
 template <typename... A> inline sentry_value_t sentry_value_new_object(A&&...) { return {}; }
 template <typename... A> inline sentry_value_t sentry_value_new_string(A&&...) { return {}; }
 template <typename... A> inline sentry_value_t sentry_value_new_message_event(A&&...) { return {}; }
+template <typename... A> inline sentry_value_t sentry_value_new_int32(A&&...) { return {}; }
 template <typename... A> inline void sentry_value_set_by_key(A&&...) {}
 template <typename... A> inline void sentry_set_context(A&&...) {}
+template <typename... A> inline void sentry_set_extra(A&&...) {}
 template <typename... A> inline void sentry_set_tag(A&&...) {}
 template <typename... A> inline sentry_value_t sentry_capture_event(A&&...) { return {}; }

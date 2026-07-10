@@ -436,6 +436,27 @@ CustomMatchPreferences::~CustomMatchPreferences()
 {
 }
 
+#if defined(SAGE_GENERALS_ONLINE)
+// GeneralsOnline custom-match lobby remembers the host's last lobby name.
+AsciiString CustomMatchPreferences::getLastLobbyName() const
+{
+	CustomMatchPreferences::const_iterator it = find("LastLobbyName");
+	if (it == end())
+	{
+		return AsciiString::TheEmptyString;
+	}
+
+	AsciiString ret = it->second;
+	ret.trim();
+	return ret;
+}
+
+void CustomMatchPreferences::setLastLobbyName(const AsciiString& name)
+{
+	(*this)["LastLobbyName"] = name;
+}
+#endif // SAGE_GENERALS_ONLINE
+
 void CustomMatchPreferences::setLastLadder(const AsciiString& addr, UnsignedShort port)
 {
 	AsciiString strVal;

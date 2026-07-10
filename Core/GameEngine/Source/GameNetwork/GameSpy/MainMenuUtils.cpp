@@ -54,6 +54,12 @@
 
 #include "WWDownload/Registry.h"
 #include "WWDownload/urlBuilder.h"
+#if defined(SAGE_GENERALS_ONLINE)
+#include "../OnlineServices_Init.h"
+#include "Common/GameEngine.h"
+#include "Common/GlobalData.h"
+#include "../PluginInterfaces.h"
+#endif // SAGE_GENERALS_ONLINE
 
 
 ///////////////////////////////////////////////////////////////////////////////////////
@@ -133,6 +139,11 @@ static void noPatchBeforeOnlineCallback()
 	{
 		// go back to normal
 		HandleCanceledDownload();
+#if defined(SAGE_GENERALS_ONLINE)
+
+		// Patch was cancelled and critical, tear us down
+		NGMP_OnlineServicesManager::GetInstance()->SetPendingFullTeardown(EGOTearDownReason::USER_REQUESTED_SILENT);
+#endif // SAGE_GENERALS_ONLINE
 	}
 	else
 	{
@@ -143,7 +154,11 @@ static void noPatchBeforeOnlineCallback()
 
 ///////////////////////////////////////////////////////////////////////////////////////
 
+#if defined(SAGE_GENERALS_ONLINE)
+static Bool hasWriteAccess(bool bFileAccessOnly = false)
+#else
 static Bool hasWriteAccess()
+#endif
 {
 	const char* filename = "PatchAccessTest.txt";
 
@@ -158,6 +173,11 @@ static Bool hasWriteAccess()
 	close(handle);
 	remove(filename);
 
+#if defined(SAGE_GENERALS_ONLINE)
+	// NGMP: We don't care about registry anymore... just disk access
+	if (!bFileAccessOnly)
+	{
+#endif // SAGE_GENERALS_ONLINE
 	unsigned int val;
 	if (!GetUnsignedIntFromRegistry("", "Version", val))
 	{
@@ -167,6 +187,9 @@ static Bool hasWriteAccess()
 	if (!SetUnsignedIntInRegistry("", "Version", val))
 	{
 		return false;
+#if defined(SAGE_GENERALS_ONLINE)
+		}
+#endif // SAGE_GENERALS_ONLINE
 	}
 
 	return true;
@@ -217,6 +240,9 @@ static void startOnline()
 
 	TheScriptEngine->signalUIInteract(TheShellHookNames[SHELL_SCRIPT_HOOK_MAIN_MENU_ONLINE_SELECTED]);
 
+#if defined(SAGE_GENERALS_ONLINE)
+	TheShell->push(AsciiString("Menus/GameSpyLoginProfile.wnd"));
+#else
 	DEBUG_ASSERTCRASH( !TheGameSpyBuddyMessageQueue, ("TheGameSpyBuddyMessageQueue exists!") );
 	DEBUG_ASSERTCRASH( !TheGameSpyPeerMessageQueue, ("TheGameSpyPeerMessageQueue exists!") );
 	DEBUG_ASSERTCRASH( !TheGameSpyInfo, ("TheGameSpyInfo exists!") );
@@ -239,6 +265,7 @@ static void startOnline()
 	else
 		TheShell->push( "Menus/GameSpyLoginQuick.wnd" );
 #endif // ALLOW_NON_PROFILED_LOGIN
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
@@ -551,6 +578,14 @@ void CancelPatchCheckCallbackAndReopenDropdown()
 {
 	HandleCanceledDownload();
 	CancelPatchCheckCallback();
+#if defined(SAGE_GENERALS_ONLINE)
+
+	// Patch was cancelled, tear us down
+	if (NGMP_OnlineServicesManager::GetInstance() != nullptr)
+	{
+		NGMP_OnlineServicesManager::GetInstance()->SetPendingFullTeardown(EGOTearDownReason::USER_REQUESTED_SILENT);
+	}
+#endif // SAGE_GENERALS_ONLINE
 }
 
 void CancelPatchCheckCallback()
@@ -629,15 +664,27 @@ static GHTTPBool overallStatsCallback( GHTTPRequest request, GHTTPResult result,
 			message.nextToken(&totalLine, "\n");
 			message.nextToken(&winsLine, "\n");
 			message.nextToken(&lossesLine, "\n");
+#if defined(SAGE_GENERALS_ONLINE)
+			while (totalLine.isNotEmpty() && !isdigit((unsigned char)totalLine.getCharAt(0)))
+#else
 			while (totalLine.isNotEmpty() && !isdigit(totalLine.getCharAt(0)))
+#endif
 			{
 				totalLine = totalLine.str()+1;
 			}
+#if defined(SAGE_GENERALS_ONLINE)
+			while (winsLine.isNotEmpty() && !isdigit((unsigned char)winsLine.getCharAt(0)))
+#else
 			while (winsLine.isNotEmpty() && !isdigit(winsLine.getCharAt(0)))
+#endif
 			{
 				winsLine = winsLine.str()+1;
 			}
+#if defined(SAGE_GENERALS_ONLINE)
+			while (lossesLine.isNotEmpty() && !isdigit((unsigned char)lossesLine.getCharAt(0)))
+#else
 			while (lossesLine.isNotEmpty() && !isdigit(lossesLine.getCharAt(0)))
+#endif
 			{
 				lossesLine = lossesLine.str()+1;
 			}
@@ -826,9 +873,126 @@ void StartPatchCheck()
 	timeThroughOnline++;
 	checksLeftBeforeOnline = 0;
 
+#if defined(SAGE_GENERALS_ONLINE)
+	// GeneralsX: upstream GeneralsOnline hard-blocks ARM here (Win32 GetSystemInfo
+	// + "does not support ARM processors"). This port exists to run on Apple
+	// Silicon, so that gate is intentionally removed.
+
+	// GENERALS ONLINE
+	NGMP_OnlineServicesManager::CreateInstance();
+
+	// online services must be initialized
+	// TODO_NGMP: Uninit this when leaving MP, waste of resources and cycles
+	NGMP_OnlineServicesManager::GetInstance()->Init();
+
+    // if we have an AC plugin loaded but the AC external process isnt running, show an error message
+    if (AnticheatPlugInterface::IsPluginLoaded())
+    {
+        if (!AnticheatPlugInterface::IsExternalProcessRunning())
+        {
+            MessageBoxOk(TheGameText->fetchOrSubstitute("GUI:ACErrorHeader", L"AntiCheat Error"),
+                TheGameText->fetchOrSubstitute("GUI:ACExternalProcessNotRunning", L"The AntiCheat external process is not running"),
+                CancelPatchCheckCallbackAndReopenDropdown);
+
+            return;
+        }
+    }
+	else if (AnticheatPlugInterface::DidPluginFailToLoad()) // Did we have something to load but it failed?
+	{
+        std::string strPlugin = NGMP_OnlineServicesManager::Settings.GetAnticheatPlugin();
+        std::string pluginPath = std::format("plugins/{}/{}.dll", strPlugin.c_str(), strPlugin.c_str());
+
+		UnicodeString strErrorMssage;
+        strErrorMssage.format(L"Failed to load the AntiCheat plugin from path: %hs. Please make sure the plugin is installed correctly.", pluginPath.c_str());
+
+        MessageBoxOk(TheGameText->fetchOrSubstitute("GUI:ACErrorHeader", L"AntiCheat Error"),
+			strErrorMssage,
+            CancelPatchCheckCallbackAndReopenDropdown);
+
+        return;
+	}
+
+#endif // SAGE_GENERALS_ONLINE
 	onlineCancelWindow = MessageBoxCancel(TheGameText->fetch("GUI:CheckingForPatches"),
 		TheGameText->fetch("GUI:CheckingForPatches"), CancelPatchCheckCallbackAndReopenDropdown);
 
+#if defined(SAGE_GENERALS_ONLINE)
+	NGMP_OnlineServicesManager::GetInstance()->StartVersionCheck([](bool bSuccess, bool bNeedsUpdate)
+		{
+#if defined(USE_TEST_ENV) || defined(USE_DEBUG_ON_LIVE_SERVER)
+			bNeedsUpdate = false;
+#endif
+			cantConnectBeforeOnline = !bSuccess;
+			mustDownloadPatch = bNeedsUpdate;
+
+			if (!bSuccess)
+			{
+				if (onlineCancelWindow)
+				{
+					TheWindowManager->winDestroy(onlineCancelWindow);
+					onlineCancelWindow = NULL;
+				}
+
+				// TODO_NGMP: do this everywhere teardowngamespy was called
+				NGMP_OnlineServicesManager::GetInstance()->SetPendingFullTeardown(EGOTearDownReason::USER_REQUESTED_SILENT);
+
+				MessageBoxOk(TheGameText->fetch("GUI:CannotConnectToServservTitle"),
+					TheGameText->fetch("GUI:CannotConnectToServserv"),
+					noPatchBeforeOnlineCallback);
+			}
+			else
+			{
+				if (!bNeedsUpdate)
+				{
+					startOnline();
+				}
+				else
+				{
+					// TODO_NGMP: Later we should allow in-game updates
+					if (onlineCancelWindow)
+					{
+						TheWindowManager->winDestroy(onlineCancelWindow);
+						onlineCancelWindow = NULL;
+					}
+
+					// NGMP_NOTE: This checks you can write to the local dir, we actually write to my docs data dir now, because it's safer, so we don't really need this chekc
+					/*
+					if (!hasWriteAccess(true))
+					{
+						MessageBoxOk(TheGameText->fetch("GUI:Error"),
+							TheGameText->fetch("GUI:MustHaveAdminRights"),
+							CancelPatchCheckCallbackAndReopenDropdown);
+					}
+					else*/ if (mustDownloadPatch)
+					{
+						// NOTE: we treat all patches as mandatory currently
+						onlineCancelWindow = MessageBoxOkCancel(TheGameText->fetch("GUI:PatchAvailable"),
+							UnicodeString(L"Press OK to begin updating.\n\nOtherwise, you can visit www.playgenerals.online to download the latest update manually."), []()
+							{
+								WindowLayout* layout;
+								layout = TheWindowManager->winCreateLayout(AsciiString("Menus/DownloadMenu.wnd"));
+								layout->runInit();
+								layout->hide(FALSE);
+								layout->bringForward();
+
+								NGMP_OnlineServicesManager::GetInstance()->StartDownloadUpdate([]()
+									{
+										MessageBoxOk(UnicodeString(L"Update Ready"), UnicodeString(L"Press OK to begin installing the patch"), []()
+											{
+												NGMP_OnlineServicesManager::GetInstance()->LaunchPatcher();
+											});
+									});
+
+							}, CancelPatchCheckCallbackAndReopenDropdown);
+					}
+				}
+			}
+		});
+	
+
+	// TODO_NGMP: Impl patch checks again
+
+	/*
 	s_asyncDNSLookupInProgress = TRUE;
 	Char hostname[] = "servserv.generals.ea.com";
 	Int ret = asyncGethostbyname(hostname);
@@ -842,6 +1006,22 @@ void StartPatchCheck()
 		reallyStartPatchCheck();
 		break;
 	}
+	*/
+#else
+	s_asyncDNSLookupInProgress = TRUE;
+	Char hostname[] = "servserv.generals.ea.com";
+	Int ret = asyncGethostbyname(hostname);
+	switch(ret)
+	{
+	case LOOKUP_FAILED:
+		cantConnectBeforeOnline = TRUE;
+		startOnline();
+		break;
+	case LOOKUP_SUCCEEDED:
+		reallyStartPatchCheck();
+		break;
+	}
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////

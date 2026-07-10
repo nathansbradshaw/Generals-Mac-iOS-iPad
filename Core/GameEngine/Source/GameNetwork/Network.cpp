@@ -174,7 +174,11 @@ public:
 	virtual void attachTransport(Transport *transport) override;
 	virtual void initTransport() override;
 
+#if defined(SAGE_GENERALS_ONLINE)
+	virtual void setSawCRCMismatch(UnicodeString& strMismatchDetails) override;
+#else
 	virtual void setSawCRCMismatch() override;
+#endif
 	virtual Bool sawCRCMismatch() override { return m_sawCRCMismatch; }
 	virtual Bool isPlayerConnected( Int playerID ) override;
 
@@ -378,7 +382,11 @@ void Network::init()
 #endif
 }
 
+#if defined(SAGE_GENERALS_ONLINE)
+void Network::setSawCRCMismatch(UnicodeString& strMismatchDetails)
+#else
 void Network::setSawCRCMismatch()
+#endif
 {
 	m_sawCRCMismatch = TRUE;
 

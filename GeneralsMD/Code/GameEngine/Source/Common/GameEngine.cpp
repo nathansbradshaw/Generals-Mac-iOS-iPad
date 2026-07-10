@@ -107,6 +107,53 @@
 #include "GameNetwork/GameSpy/GameResultsThread.h"
 
 #include "Common/version.h"
+#if defined(SAGE_GENERALS_ONLINE)
+
+#include "../NextGenMP_defines.h"
+
+// GENERALS ONLINE
+#include "../OnlineServices_Init.h"
+#include "GameNetwork/GameSpyOverlay.h"
+#include <chrono>
+#include "ww3d.h"
+
+static bool g_bTearDownGeneralsOnlineRequested = false;
+void TearDownGeneralsOnline()
+{
+	g_bTearDownGeneralsOnlineRequested = true;
+
+	if (NGMP_OnlineServicesManager::GetInstance() == nullptr)
+		return;
+
+	EGOTearDownReason teardownReason = NGMP_OnlineServicesManager::GetInstance()->GetTeardownReason();
+
+	if (teardownReason != EGOTearDownReason::USER_REQUESTED_SILENT)
+	{
+		UnicodeString title, body;
+
+		if (teardownReason == EGOTearDownReason::USER_LOGOUT)
+		{
+			title = L"Logged Out";
+			body = L"You are now logged out of GeneralsOnline.";
+		}
+		else if (teardownReason == EGOTearDownReason::LOST_CONNECTION)
+		{
+			title = TheGameText->fetch("GUI:GSErrorTitle");
+			body = L"Your connection to the Generals Online servers was lost.";
+		}
+		else
+		{
+			title = TheGameText->fetch("GUI:GSErrorTitle");
+			body = L"An unknown error occurred.";
+		}
+
+		NGMP_OnlineServicesManager::GetInstance()->ResetPendingFullTeardownReason();
+
+		GameSpyCloseAllOverlays();
+		GSMessageBoxOk(title, body);
+	}
+}
+#endif // SAGE_GENERALS_ONLINE
 
 
 //-------------------------------------------------------------------------------------------------
@@ -307,7 +354,12 @@ GameEngine::~GameEngine()
 
 	delete TheGameLODManager;
 	TheGameLODManager = nullptr;
+#if defined(SAGE_GENERALS_ONLINE)
+	// GENERALS ONLINE
+	NGMP_OnlineServicesManager::DestroyInstance();
+#else
 
+#endif
 	Drawable::killStaticImages();
 
 // TheSuperHackers @build fighter19 11/02/2026 COM termination (Windows-only)
@@ -318,6 +370,10 @@ GameEngine::~GameEngine()
 #ifdef PERF_TIMERS
 	PerfGather::termPerfDump();
 #endif
+#if defined(SAGE_GENERALS_ONLINE)
+	// Kill sentry
+	NGMP_OnlineServicesManager::ShutdownSentry();
+#endif // SAGE_GENERALS_ONLINE
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -509,6 +565,11 @@ void GameEngine::init()
 			ini.load(sagePatchPath, INI_LOAD_OVERWRITE, nullptr);
 		}
 	}
+#if defined(SAGE_GENERALS_ONLINE)
+
+		// Init sentry ASAP to catch early crashes
+		NGMP_OnlineServicesManager::InitSentry();
+#endif // SAGE_GENERALS_ONLINE
 
 	#ifdef DUMP_PERF_STATS///////////////////////////////////////////////////////////////////////////
 	GetPrecisionTimer(&endTime64);//////////////////////////////////////////////////////////////////
@@ -838,6 +899,11 @@ void GameEngine::init()
 	resetSubsystems();
 
 	HideControlBar();
+#if defined(SAGE_GENERALS_ONLINE)
+
+	// NGMP_CHANGE: Init our settings
+	NGMP_OnlineServicesManager::Settings.Initialize();
+#endif // SAGE_GENERALS_ONLINE
 }
 
 /** -----------------------------------------------------------------------------------------------
@@ -951,6 +1017,12 @@ Bool GameEngine::canUpdateRegularGameLogic()
 	return false;
 }
 
+#if defined(SAGE_GENERALS_ONLINE)
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+extern NGMPGame* TheNGMPGame;
+#endif
+
+#endif // SAGE_GENERALS_ONLINE
 /// -----------------------------------------------------------------------------------------------
 DECLARE_PERF_TIMER(GameEngine_update)
 
@@ -965,6 +1037,21 @@ void GameEngine::update()
 			// VERIFY CRC needs to be in this code block.  Please to not pull TheGameLogic->update() inside this block.
 			VERIFY_CRC
 
+#if defined(SAGE_GENERALS_ONLINE)
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+			// NGMP_NOTE: Lock the shellmap to 30fps until we fix everything
+			if (TheNGMPGame != nullptr && TheGameLogic->isInGame() && !TheShell->isShellActive())
+			{
+				TheFramePacer->setFramesPerSecondLimit(NGMP_OnlineServicesManager::Settings.Graphics_GetFPSLimit());
+				TheWritableGlobalData->m_useFpsLimit = NGMP_OnlineServicesManager::Settings.Graphics_GetFPSLimit();
+			}
+			else
+			{
+				TheFramePacer->setFramesPerSecondLimit(GENERALS_ONLINE_HIGH_FPS_LIMIT);
+			}
+#endif
+			
+#endif // SAGE_GENERALS_ONLINE
 			TheRadar->UPDATE();
 
 			/// @todo Move audio init, update, etc, into GameClient update
@@ -976,6 +1063,21 @@ void GameEngine::update()
 			if (TheNetwork != nullptr)
 			{
 				TheNetwork->UPDATE();
+#if defined(SAGE_GENERALS_ONLINE)
+            }
+
+			if (g_bTearDownGeneralsOnlineRequested) // delayed tear down
+			{
+				g_bTearDownGeneralsOnlineRequested = false;
+
+				NGMP_OnlineServicesManager::DestroyInstance();
+
+			}
+			
+			if (NGMP_OnlineServicesManager::GetInstance() != nullptr)
+			{
+				NGMP_OnlineServicesManager::GetInstance()->Tick();
+#endif // SAGE_GENERALS_ONLINE
 			}
 		}
 

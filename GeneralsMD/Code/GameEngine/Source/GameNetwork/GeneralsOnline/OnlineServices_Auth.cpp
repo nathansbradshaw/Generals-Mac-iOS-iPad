@@ -498,6 +498,18 @@ bool NGMP_OnlineServices_AuthInterface::GetCredentials(std::string& strRefreshTo
 #if defined(_DEBUG) && !defined(USE_TEST_ENV) && !defined(USE_DEBUG_ON_LIVE_SERVER)
 	return false;
 #endif
+
+	// GeneralsX @feature friends-scale login without the Windows launcher: a
+	// pre-minted refresh token may be supplied via the environment (see
+	// scripts/go-online/mint_refresh_token.py + docs/port/go-online/BACKEND_NOTES.md).
+	// This is the minimum replacement for the launcher's token acquisition:
+	// BeginLogin() then POSTs LoginWithToken and proceeds straight to the lobby.
+	const char* pEnvToken = getenv("GENERALSX_ONLINE_REFRESH_TOKEN");
+	if (pEnvToken != nullptr && pEnvToken[0] != '\0')
+	{
+		strRefreshToken = pEnvToken;
+		return true;
+	}
 	std::vector<uint8_t> vecBytes;
 	FILE* file = fopen(GetCredentialsFilePath().c_str(), "rb");
 	if (file)

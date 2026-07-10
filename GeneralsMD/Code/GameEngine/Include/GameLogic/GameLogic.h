@@ -37,6 +37,9 @@
 #include "GameNetwork/NetworkDefs.h"
 #include "GameLogic/AI.h"
 #include "GameLogic/Module/UpdateModule.h"	// needed for DIRECT_UPDATEMODULE_ACCESS
+#if defined(SAGE_GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NextGenMP_defines.h"
+#endif // SAGE_GENERALS_ONLINE
 
 /*
 	At one time, we distinguished between sleepy and nonsleepy
@@ -144,6 +147,15 @@ public:
 	void setObjectIDCounter( ObjectID nextObjID ) { m_nextObjID = nextObjID; }
 	ObjectID getObjectIDCounter() { return m_nextObjID; }
 
+#if defined(SAGE_GENERALS_ONLINE)
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	UnsignedInt getFrameLegacy(void);
+	UnsignedInt getFrameLegacyLast(void);
+	bool HasLegacyFrameAdvanced(void);
+#endif
+
+
+#endif // SAGE_GENERALS_ONLINE
 	//-----------------------------------------------------------------------------------------------
 	void setBuildableStatusOverride(const ThingTemplate* tt, BuildableStatus bs);
 	Bool findBuildableStatusOverride(const ThingTemplate* tt, BuildableStatus& bs) const;
@@ -391,6 +403,12 @@ private:
 
 	Real m_width, m_height;																	///< Dimensions of the world
 	UnsignedInt m_frame;																		///< Simulation frame number
+#if defined(SAGE_GENERALS_ONLINE)
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+	UnsignedInt m_frameLegacy;
+	UnsignedInt m_frameLegacyLast;
+#endif
+#endif // SAGE_GENERALS_ONLINE
 
 	// CRC cache system -----------------------------------------------------------------------------
 	UnsignedInt	m_CRC;																			///< Cache of previous CRC value
@@ -439,7 +457,12 @@ private:
 
 	ObjectID m_nextObjID;																		///< For allocating object id's
 
+#if defined(SAGE_GENERALS_ONLINE)
+	void setDefaults(Bool loadSaveGame);									///< Set default values of class object
+	void processDestroyList(void);												///< Destroy all pending objects on the destroy list
+#else
 	void processDestroyList();												///< Destroy all pending objects on the destroy list
+#endif
 
 	void destroyAllObjectsImmediate();											///< destroy, and process destroy list immediately
 
@@ -464,7 +487,14 @@ private:
 	Bool m_logicTimeScaleEnabledMemory;
 
 	Bool m_progressComplete[MAX_SLOTS];
+#if defined(SAGE_GENERALS_ONLINE)
+	Int m_progressMade[MAX_SLOTS];
+
+	enum { PROGRESS_COMPLETE_TIMEOUT_PROGRESS_MADE = 30000 };							///< Timeout we wait for when we've completed our Load, if they made SOME progress
+	enum { PROGRESS_COMPLETE_TIMEOUT_ZERO_PROGRESS_MADE = 5000 };							///< Timeout we wait for when we've completed our Load, when they made zero progress
+#else
 	enum { PROGRESS_COMPLETE_TIMEOUT = 60000 };							///< Timeout we wait for when we've completed our Load
+#endif
 	Int m_progressCompleteTimeout[MAX_SLOTS];
 	void testTimeOut();
 	void lastHeardFrom( Int playerId );
@@ -505,6 +535,14 @@ inline GameMode GameLogic::getGameMode() { return m_gameMode; }
 inline Bool GameLogic::isInLanGame() { return (m_gameMode == GAME_LAN); }
 inline Bool GameLogic::isInSkirmishGame() { return (m_gameMode == GAME_SKIRMISH); }
 inline Bool GameLogic::isInMultiplayerGame() { return (m_gameMode == GAME_LAN) || (m_gameMode == GAME_INTERNET) ; }
+#if defined(SAGE_GENERALS_ONLINE)
+
+#if defined(GENERALS_ONLINE_HIGH_FPS_SERVER)
+inline UnsignedInt GameLogic::getFrameLegacy(void) { return m_frameLegacy; }
+inline UnsignedInt GameLogic::getFrameLegacyLast(void) { return m_frameLegacyLast; }
+inline bool GameLogic::HasLegacyFrameAdvanced(void) { return m_frameLegacy != m_frameLegacyLast; }
+#endif
+#endif // SAGE_GENERALS_ONLINE
 inline Bool GameLogic::isInInteractiveGame() const { return isInInteractiveGame(m_gameMode); }
 inline Bool GameLogic::isInReplayGame() { return (m_gameMode == GAME_REPLAY); }
 inline Bool GameLogic::isInInternetGame() { return (m_gameMode == GAME_INTERNET); }
@@ -522,6 +560,14 @@ inline Object* GameLogic::findObjectByID( ObjectID id )
 //
 //	return (*it).second;
 	if( (size_t)id < m_objVector.size() )
+#if defined(SAGE_GENERALS_ONLINE)
+	//	ObjectPtrHash::iterator it = m_objHash.find(id);
+	//	if (it == m_objHash.end())
+	//		return NULL;
+	//
+	//	return (*it).second;
+	if ((size_t)id < m_objVector.size())
+#endif // SAGE_GENERALS_ONLINE
 		return m_objVector[(size_t)id];
 
 	return nullptr;

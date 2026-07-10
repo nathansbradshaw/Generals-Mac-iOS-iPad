@@ -104,8 +104,14 @@ typedef std::map<Int, GameSpyStagingRoom *> StagingRoomMap;
 class PlayerInfo
 {
 public:
+#if defined(SAGE_GENERALS_ONLINE)
+	PlayerInfo() { m_nameUni = UnicodeString::TheEmptyString; m_name = m_locale = AsciiString::TheEmptyString; m_wins = m_losses = m_rankPoints = m_side = m_preorder = m_profileID = m_flags = 0; }
+	AsciiString m_name;
+	UnicodeString m_nameUni;	// GeneralsOnline: unicode display name
+#else
 	PlayerInfo() { m_name = m_locale = AsciiString::TheEmptyString; m_wins = m_losses = m_rankPoints = m_side = m_preorder = m_profileID = m_flags = 0; }
 	AsciiString m_name;
+#endif
 	AsciiString m_locale;
 	Int m_wins;
 	Int m_losses;

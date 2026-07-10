@@ -53,3 +53,15 @@ enum GameSortType CPP_11(: Int)
 
 Bool HandleSortButton( NameKeyType sortButton );
 void PopulateLobbyPlayerListbox();
+
+#if defined(SAGE_GENERALS_ONLINE)
+// GeneralsOnline custom-match lobby game-mode filter.
+enum LobbyGameModeFilter CPP_11(: Int)
+{
+	LOBBY_FILTER_ALL = 0,
+	LOBBY_FILTER_1V1,
+	LOBBY_FILTER_TEAM,
+	LOBBY_FILTER_FFA,
+	LOBBY_FILTER_AOD,
+};
+#endif // SAGE_GENERALS_ONLINE

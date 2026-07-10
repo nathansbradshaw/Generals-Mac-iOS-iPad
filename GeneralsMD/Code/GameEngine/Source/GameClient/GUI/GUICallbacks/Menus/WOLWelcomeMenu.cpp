@@ -67,6 +67,9 @@
 #include "GameNetwork/GameSpy/ThreadUtils.h"
 #include "GameNetwork/GameSpy/MainMenuUtils.h"
 #include "GameNetwork/WOLBrowser/WebBrowser.h"
+#if defined(SAGE_GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
+#endif // SAGE_GENERALS_ONLINE
 
 // PRIVATE DATA ///////////////////////////////////////////////////////////////////////////////////
 static Bool isShuttingDown = FALSE;
@@ -231,18 +234,32 @@ static void updateNumPlayersOnline()
 		GadgetStaticTextSetText(playersOnlineWindow, valStr);
 	}
 
+#if defined(SAGE_GENERALS_ONLINE)
+	// TODO_NGMP
+	//if (listboxInfo && TheGameSpyInfo)
+	if (listboxInfo)
+#else
 	if (listboxInfo && TheGameSpyInfo)
+#endif
 	{
 		GadgetListBoxReset(listboxInfo);
 		AsciiString aLine;
 		UnicodeString line;
+#if defined(SAGE_GENERALS_ONLINE)
+
+		AsciiString aMotd = NGMP_OnlineServicesManager::GetInstance() == nullptr ? AsciiString() : AsciiString(NGMP_OnlineServicesManager::GetInstance()->GetMOTD().c_str());
+#else
 		AsciiString aMotd = TheGameSpyInfo->getMOTD();
+#endif
 		UnicodeString headingStr;
 		//Kris: Patch 1.01 - November 12, 2003
 		//Removed number of players from string, and removed the argument. The number is incorrect anyways...
 		//This was a Harvard initiated fix.
 		headingStr.format(TheGameText->fetch("MOTD:NumPlayersHeading"));
 
+#if defined(SAGE_GENERALS_ONLINE)
+		//<hexcol>%hs for colors
+#endif // SAGE_GENERALS_ONLINE
 		while (headingStr.nextToken(&line, L"\n"))
 		{
 			if (line.getCharAt(line.getLength()-1) == '\r')
@@ -259,6 +276,9 @@ static void updateNumPlayersOnline()
 		}
 		GadgetListBoxAddEntryText(listboxInfo, L" ", GameSpyColor[GSCOLOR_MOTD_HEADING], -1, -1);
 
+#if defined(SAGE_GENERALS_ONLINE)
+		// END NETWORK CAPS
+#endif // SAGE_GENERALS_ONLINE
 		while (aMotd.nextToken(&aLine, "\n"))
 		{
 			if (aLine.getCharAt(aLine.getLength()-1) == '\r')
@@ -315,7 +335,11 @@ static const char* FindNextNumber( const char* pStart )
 	if( !pNum )
 		return pStart;  //error
 
+#if defined(SAGE_GENERALS_ONLINE)
+	while( !isdigit((unsigned char)*pNum) )
+#else
 	while( !isdigit(*pNum) )
+#endif
 		++pNum;  //go to next number
 	return pNum;
 }
@@ -370,6 +394,69 @@ void HandleOverallStats( const char* szHTTPStats, unsigned len )
 //called only from WOLWelcomeMenuInit to set %win stats
 static void updateOverallStats()
 {
+#if defined(SAGE_GENERALS_ONLINE)
+	NGMP_OnlineServices_StatsInterface* pStatsInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_StatsInterface>();
+	if (pStatsInterface == nullptr)
+	{
+		return;
+	}
+
+	pStatsInterface->GetGlobalStats([=](GlobalStats stats)
+		{
+			UnicodeString percStr;
+			AsciiString wndName;
+			GameWindow* pWin;
+
+			// calculate total win percent
+			int totalWins = 0;
+			int totalGames = 0;
+			s_totalWinPercent = 0.f;
+
+			for (int i = 0; i < stats.matches.size(); ++i)
+			{
+				totalWins += stats.wins[i];
+				totalGames += stats.matches[i];
+			}
+
+			if (totalGames <= 0)
+				totalGames = 1;  //prevent divide by zero
+
+			s_totalWinPercent = ((float)totalWins / (float)totalGames);
+
+			if (s_totalWinPercent <= 0)
+				s_totalWinPercent = 1;  //prevent divide by zero
+
+			//std::map<AsciiString, float>::iterator it;
+			//for (it = s_winStats.begin(); it != s_winStats.end(); ++it)
+			for (int i = 0; i < stats.matches.size(); ++i)
+			{
+				int wins = stats.wins[i];
+				int matches = stats.matches[i];
+
+				// div by 0 fix
+				if (matches == 0)
+				{
+					matches = 1;
+				}
+
+
+				float fThisPercent = ((float)wins / (float)matches);
+
+				std::string teamName = g_mapServiceIndexToPlayerTemplateString[i]; 
+
+				//int percent = (int)(100.0f * (fThisPercent / s_totalWinPercent));
+				//percStr.format(TheGameText->fetch("GUI:WinPercent"), percent);
+
+				percStr.format(L"%d%% (%d of %d)", (int)(100.f*fThisPercent), stats.wins[i], stats.matches[i]);
+				wndName.format("WOLWelcomeMenu.wnd:Percent%s", teamName.c_str());
+				pWin = TheWindowManager->winGetWindowFromId(NULL, NAMEKEY(wndName));
+				GadgetCheckBoxSetText(pWin, percStr);
+				//x		DEBUG_LOG(("Initialized win percent: %s -> %s %f=%s\n", wndName.str(), it->first.str(), it->second, percStr.str() ));
+			} //for
+		});
+
+	return;
+#endif // SAGE_GENERALS_ONLINE
 	UnicodeString percStr;
 	AsciiString wndName;
 	GameWindow* pWin;
@@ -415,6 +502,10 @@ static Bool raiseMessageBoxes = FALSE;
 //-------------------------------------------------------------------------------------------------
 void WOLWelcomeMenuInit( WindowLayout *layout, void *userData )
 {
+#if defined(SAGE_GENERALS_ONLINE)
+	updateNumPlayersOnline();
+
+#endif // SAGE_GENERALS_ONLINE
 	nextScreen = nullptr;
 	buttonPushed = FALSE;
 	isShuttingDown = FALSE;
@@ -464,11 +555,25 @@ void WOLWelcomeMenuInit( WindowLayout *layout, void *userData )
 	}
 
 	GameWindow *staticTextTitle = TheWindowManager->winGetWindowFromId(parentWOLWelcome, NAMEKEY("WOLWelcomeMenu.wnd:StaticTextTitle"));
+#if defined(SAGE_GENERALS_ONLINE)
+
+	if (staticTextTitle)
+	{
+		UnicodeString title;
+
+		NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
+		if (pAuthInterface != nullptr)
+		{
+			title.format(L"Welcome to Generals Online, %s", pAuthInterface->GetDisplayNameW().c_str());
+			GadgetStaticTextSetText(staticTextTitle, title);
+		}
+#else
 	if (staticTextTitle && TheGameSpyInfo)
 	{
 		UnicodeString title;
 		title.format(TheGameText->fetch("GUI:WOLWelcome"), TheGameSpyInfo->getLocalBaseName().str());
 		GadgetStaticTextSetText(staticTextTitle, title);
+#endif
 	}
 
 	// Clear some defaults
@@ -503,6 +608,7 @@ void WOLWelcomeMenuInit( WindowLayout *layout, void *userData )
 	buttonLadderID = TheNameKeyGenerator->nameToKey( "WOLWelcomeMenu.wnd:ButtonLadder" );
 	buttonLadder = TheWindowManager->winGetWindowFromId( parentWOLWelcome, buttonLadderID );
 
+#if !defined(SAGE_GENERALS_ONLINE)
 	if (TheFirewallHelper == nullptr) {
 		TheFirewallHelper = createFirewallHelper();
 	}
@@ -511,6 +617,7 @@ void WOLWelcomeMenuInit( WindowLayout *layout, void *userData )
 		delete TheFirewallHelper;
 		TheFirewallHelper = nullptr;
 	}
+#endif // !SAGE_GENERALS_ONLINE
 	/*
 
 	if (TheGameSpyChat && TheGameSpyChat->isConnected())
@@ -541,11 +648,23 @@ void WOLWelcomeMenuInit( WindowLayout *layout, void *userData )
 	// Set Keyboard to Main Parent
 	TheWindowManager->winSetFocus( parentWOLWelcome );
 
+#if defined(SAGE_GENERALS_ONLINE)
+
+	enableControls( true );
+	TheShell->showShellMap(TRUE);
+
+#else
 	enableControls( TheGameSpyInfo->gotGroupRoomList() );
 	TheShell->showShellMap(TRUE);
+#endif
 
 	updateNumPlayersOnline();
 	updateOverallStats();
+#if defined(SAGE_GENERALS_ONLINE)
+	UpdateLocalPlayerStats();
+
+	// NGMP: We removed locales, it was pointless
+#else
 
 	UpdateLocalPlayerStats();
 
@@ -554,10 +673,44 @@ void WOLWelcomeMenuInit( WindowLayout *layout, void *userData )
 	{
 		GameSpyOpenOverlay(GSOVERLAY_LOCALESELECT);
 	}
+#endif
 
 	raiseMessageBoxes = TRUE;
 	TheTransitionHandler->setGroup("WOLWelcomeMenuFade");
 
+#if defined(SAGE_GENERALS_ONLINE)
+    // Update the communicator button anytime we get notifications
+    NGMP_OnlineServices_SocialInterface* pSocialInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_SocialInterface>();
+    if (pSocialInterface != nullptr)
+    {
+        // notifiactions callback
+        pSocialInterface->RegisterForCallback_OnNumberGlobalNotificationsChanged([](int numNotifications)
+            {
+                // update communicator button
+                if (buttonBuddies != nullptr)
+                {
+                    UnicodeString buttonText;
+                    if (numNotifications > 0)
+                    {
+                        buttonText.format(L"%s [%d]", TheGameText->fetch("GUI:Buddies").str(), numNotifications);
+                    }
+                    else
+                    {
+                        buttonText.format(L"%s", TheGameText->fetch("GUI:Buddies").str());
+                    }
+					buttonBuddies->winSetText(buttonText);
+                }
+            });
+
+        // And also initialize it
+        if (buttonBuddies != nullptr && pSocialInterface->GetNumTotalNotifications() > 0)
+        {
+            UnicodeString buttonText;
+            buttonText.format(L"%s [%d]", TheGameText->fetch("GUI:Buddies").str(), pSocialInterface->GetNumTotalNotifications());
+            buttonBuddies->winSetText(buttonText);
+        }
+    }
+#endif // SAGE_GENERALS_ONLINE
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -605,6 +758,44 @@ void WOLWelcomeMenuUpdate( WindowLayout * layout, void *userData)
 		raiseMessageBoxes = FALSE;
 	}
 
+#if defined(SAGE_GENERALS_ONLINE)
+	// -onlineAutostart stage 2: we only reach this menu once logged in, so
+	// advance to the custom-match lobby list as if ButtonCustomMatch was
+	// clicked, after the entry transition settles. See MainMenu.cpp stage 1.
+	{
+		extern Bool g_GeneralsXOnlineAutostart;
+		static Bool s_welcomeAutostartFired = FALSE;
+		if (g_GeneralsXOnlineAutostart && !s_welcomeAutostartFired
+			&& buttonLobby != nullptr && !isShuttingDown
+			&& TheShell->isAnimFinished() && TheTransitionHandler->isFinished())
+		{
+			s_welcomeAutostartFired = TRUE;
+			DEBUG_LOG(("[GeneralsX] -onlineAutostart: entering custom lobby list"));
+			buttonPushed = TRUE;
+			nextScreen = "Menus/WOLCustomLobby.wnd";
+			TheShell->pop();
+		}
+	}
+
+	// TODO_NGMP: We do this in multiple UIs, we should actually just do it in one place and send an event to every other screen
+	if (NGMP_OnlineServicesManager::GetInstance() != nullptr && NGMP_OnlineServicesManager::GetInstance()->IsPendingFullTeardown())
+	{
+		NGMP_OnlineServicesManager::GetInstance()->ConsumePendingFullTeardown();
+
+		buttonPushed = TRUE;
+
+		TheShell->pop();
+
+		// NGMP: Don't need to logout here, just kill the WS connection, that triggers a log out
+		TearDownGeneralsOnline();
+	}
+
+	// TODO_NGMP: do we still care about FW helper?
+
+	HandleBuddyResponses();
+
+	if (TheShell->isAnimFinished() && !buttonPushed && TheGameSpyPeerMessageQueue && TheGameSpyInfo)
+#else
 	if (TheFirewallHelper != nullptr)
 	{
 		if (TheFirewallHelper->behaviorDetectionUpdate())
@@ -622,6 +813,7 @@ void WOLWelcomeMenuUpdate( WindowLayout * layout, void *userData)
 	}
 
 	if (TheShell->isAnimFinished() && !buttonPushed && TheGameSpyPeerMessageQueue)
+#endif
 	{
 		HandleBuddyResponses();
 		HandlePersistentStorageResponses();
@@ -773,6 +965,9 @@ WindowMsgHandledType WOLWelcomeMenuSystem( GameWindow *window, UnsignedInt msg,
 
 		case GBM_SELECTED:
 			{
+#if defined(SAGE_GENERALS_ONLINE)
+			// TODO_NGMP: Support exiting online again
+#endif // SAGE_GENERALS_ONLINE
 				if (buttonPushed)
 					break;
 
@@ -784,6 +979,12 @@ WindowMsgHandledType WOLWelcomeMenuSystem( GameWindow *window, UnsignedInt msg,
 					//DEBUG_ASSERTCRASH(TheGameSpyChat->getPeer(), ("No GameSpy Peer object!"));
 					//TheGameSpyChat->disconnectFromChat();
 
+#if defined(SAGE_GENERALS_ONLINE)
+					// NGMP: Don't need to logout here, just kill the WS connection, that triggers a log out
+					NGMP_OnlineServicesManager::GetInstance()->SetPendingFullTeardown(EGOTearDownReason::USER_REQUESTED_SILENT);
+
+					DEBUG_LOG(("Tearing down GeneralsOnline from WOLWelcomeMenuSystem(GBM_SELECTED)\n"));
+#else
 					PeerRequest req;
 					req.peerRequestType = PeerRequest::PEERREQUEST_LOGOUT;
 					TheGameSpyPeerMessageQueue->addRequest( req );
@@ -793,6 +994,7 @@ WindowMsgHandledType WOLWelcomeMenuSystem( GameWindow *window, UnsignedInt msg,
 
 					DEBUG_LOG(("Tearing down GameSpy from WOLWelcomeMenuSystem(GBM_SELECTED)"));
 					TearDownGameSpy();
+#endif
 
 					/*
 					if (TheGameSpyChat->getPeer())
@@ -824,7 +1026,11 @@ WindowMsgHandledType WOLWelcomeMenuSystem( GameWindow *window, UnsignedInt msg,
 				else if (controlID == buttonQuickMatchID)
 				{
 					GameSpyMiscPreferences mPref;
+#if defined(SAGE_GENERALS_ONLINE)
+					if ((TheDisplay->getWidth() != 800 || TheDisplay->getHeight() != 600) && mPref.getQuickMatchResLocked())
+#else
 					if ((TheDisplay->getWidth() != DEFAULT_DISPLAY_WIDTH || TheDisplay->getHeight() != DEFAULT_DISPLAY_HEIGHT) && mPref.getQuickMatchResLocked())
+#endif
 					{
 						GSMessageBoxOk(TheGameText->fetch("GUI:GSErrorTitle"), TheGameText->fetch("GUI:QuickMatch800x600"));
 					}
@@ -837,15 +1043,35 @@ WindowMsgHandledType WOLWelcomeMenuSystem( GameWindow *window, UnsignedInt msg,
 				}
 				else if (controlID == buttonMyInfoID )
 				{
+#if defined(SAGE_GENERALS_ONLINE)
+					// TODO_NGMP: This needs work for unicode once we support this
+					NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
+					if (pAuthInterface != nullptr)
+					{
+						SetLookAtPlayer(pAuthInterface->GetUserID(), UnicodeString(pAuthInterface->GetDisplayNameW().c_str()));
+					GameSpyToggleOverlay(GSOVERLAY_PLAYERINFO);
+					}
+#else
 					SetLookAtPlayer(TheGameSpyInfo->getLocalProfileID(), TheGameSpyInfo->getLocalName());
 					GameSpyToggleOverlay(GSOVERLAY_PLAYERINFO);
+#endif
 				}
 				else if (controlID == buttonLobbyID)
 				{
 					//TheGameSpyChat->clearGroupRoomList();
 					//peerListGroupRooms(TheGameSpyChat->getPeer(), ListGroupRoomsCallback, nullptr, PEERTrue);
+#if defined(SAGE_GENERALS_ONLINE)
+
+					// TODO_NGMP
+					//TheGameSpyInfo->joinBestGroupRoom();
+					//enableControls( FALSE );
+					buttonPushed = TRUE;
+					nextScreen = "Menus/WOLCustomLobby.wnd";
+					TheShell->pop();
+#else
 					TheGameSpyInfo->joinBestGroupRoom();
 					enableControls( FALSE );
+#endif
 
 
 					/*

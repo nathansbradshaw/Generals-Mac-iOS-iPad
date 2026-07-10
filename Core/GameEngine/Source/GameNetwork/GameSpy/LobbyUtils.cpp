@@ -142,6 +142,11 @@ static void showSortIcons()
 void setSortMode( GameSortType sortType ) { theGameSortType = sortType; showSortIcons(); RefreshGameListBoxes(); }
 void sortByBuddies( Bool doSort ) { sortBuddies = doSort; showSortIcons(); RefreshGameListBoxes(); }
 
+#if defined(SAGE_GENERALS_ONLINE)
+// GeneralsOnline custom-match lobby game-mode filter (declared in LobbyUtils.h).
+LobbyGameModeFilter theLobbyFilter = LOBBY_FILTER_ALL;
+#endif
+
 Bool HandleSortButton( NameKeyType sortButton )
 {
 	if (sortButton == buttonSortBuddiesID)

@@ -111,7 +111,11 @@ public:
 	virtual void attachTransport(Transport *transport) = 0;
 	virtual void initTransport() = 0;
 	virtual Bool sawCRCMismatch() = 0;
+#if defined(SAGE_GENERALS_ONLINE)
+	virtual void setSawCRCMismatch(UnicodeString& strMismatchDetails) = 0;	// GeneralsOnline carries the mismatch detail string
+#else
 	virtual void setSawCRCMismatch() = 0;
+#endif
 
 	virtual Bool isPlayerConnected(Int playerID) = 0;
 

@@ -87,6 +87,12 @@
 #include "GameLogic/Object.h"
 #include "GameLogic/ScriptEngine.h"		// For TheScriptEngine - jkmcd
 
+#if defined(SAGE_GENERALS_ONLINE)
+#include "../NextGenMP_defines.h"
+#include <chrono>
+
+
+#endif // SAGE_GENERALS_ONLINE
 #define DRAWABLE_HASH_SIZE	8192
 
 /// The GameClient singleton instance
@@ -106,6 +112,14 @@ GameClient::GameClient()
 	m_textBearingDrawableList.clear();
 
 	m_frame = 0;
+#if defined(SAGE_GENERALS_ONLINE)
+
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	m_legacyFrameMSAccured = 0;
+	m_frameLegacy = 0;
+	m_frameLegacyLast = 0;
+#endif
+#endif // SAGE_GENERALS_ONLINE
 
 	m_drawableList = nullptr;
 
@@ -185,7 +199,9 @@ GameClient::~GameClient()
 	delete TheFontLibrary;
 	TheFontLibrary = nullptr;
 
+#if !defined(SAGE_GENERALS_ONLINE)
 	TheMouse->reset();
+#endif // !SAGE_GENERALS_ONLINE
 	delete TheMouse;
 	TheMouse = nullptr;
 
@@ -790,6 +806,31 @@ void GameClient::update()
 		// update the in game UI
 		TheInGameUI->UPDATE();
 	}
+#if defined(SAGE_GENERALS_ONLINE)
+
+#if defined(GENERALS_ONLINE_HIGH_FPS_RENDER)
+	// GeneralsX: utc_clock is absent from Apple libc++; system_clock is
+	// equivalent here (elapsed-ms delta only). Matches PORTING_LOG T3.3.
+	int64_t currTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+	if (!freezeTime)
+	{
+		m_legacyFrameMSAccured += currTime - m_LegacyFrameEndLastFrame;
+	}
+	m_LegacyFrameEndLastFrame = currTime;
+
+	// TODO_NGMP: This should really use partial frame intervals instead of a fixed 60hz update
+	if (m_legacyFrameMSAccured >= 33)
+	{
+		m_legacyFrameMSAccured = 0;
+		m_frameLegacy++;
+	}
+	else
+	{
+		m_frameLegacyLast = m_frameLegacy;
+	}
+#endif
+#endif // SAGE_GENERALS_ONLINE
 }
 
 void GameClient::step()

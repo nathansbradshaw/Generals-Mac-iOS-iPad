@@ -70,6 +70,9 @@
 #ifdef RTS_ENABLE_CRASHDUMP
 #include "Common/MiniDumper.h"
 #endif
+#if defined(SAGE_GENERALS_ONLINE)
+#include "../OnlineServices_Init.h"
+#endif // SAGE_GENERALS_ONLINE
 
 
 // GLOBALS ////////////////////////////////////////////////////////////////////
@@ -312,7 +315,11 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 #ifdef	DEBUG_WINDOWS_MESSAGES
 		static msgCount=0;
 		char testString[256];
+#if defined(SAGE_GENERALS_ONLINE)
+		snprintf(testString, sizeof(testString), "\n%d: %s (%X,%X)", msgCount++, messageToString(message), wParam, lParam);
+#else
 		sprintf(testString,"\n%d: %s (%X,%X)", msgCount++,messageToString(message), wParam, lParam);
+#endif
 		OutputDebugString(testString);
 #endif
 
@@ -748,7 +755,16 @@ static Bool initializeAppWindows( HINSTANCE hInstance, Int nCmdShow, Bool runWin
 
 
 	if (!runWindowed)
+#if defined(SAGE_GENERALS_ONLINE)
+    {
+#if defined(GENERALS_ONLINE_WINDOWED_FULLSCREEN)
+        SetWindowPos(hWnd, HWND_TOP, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);
+#else
+        SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);
+#endif
+#else
 	{	SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,SWP_NOSIZE |SWP_NOMOVE);
+#endif
 	}
 	else
 		SetWindowPos(hWnd, HWND_TOP, 0, 0, 0, 0,SWP_NOSIZE |SWP_NOMOVE);
@@ -856,7 +872,11 @@ Int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		char filePath[_MAX_PATH];
 		const char *fileName = "Install_Final.bmp";
 		static const char *localizedPathFormat = "Data/%s/";
+#if defined(SAGE_GENERALS_ONLINE)
+			snprintf(filePath, sizeof(filePath), localizedPathFormat, GetRegistryLanguage().str());
+#else
 		sprintf(filePath,localizedPathFormat, GetRegistryLanguage().str());
+#endif
 		strlcat(filePath, fileName, ARRAY_SIZE(filePath));
 		FILE *fileImage = fopen(filePath, "r");
 		if (fileImage) {
@@ -884,6 +904,10 @@ Int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 			return exitcode;
 		}
 
+#if defined(SAGE_GENERALS_ONLINE)
+		NGMP_OnlineServicesManager::AttemptLoadSteam();
+
+#endif // SAGE_GENERALS_ONLINE
 		// save our application instance for future use
 		ApplicationHInstance = hInstance;
 
@@ -900,9 +924,16 @@ Int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 		// Set up version info
 		TheVersion = NEW Version;
+#if defined(SAGE_GENERALS_ONLINE)
+		// TODO_NGMP: Better solution
+		TheVersion->setVersion(VERSION_MAJOR, VERSION_MINOR, GENERALS_ONLINE_VERSION, GENERALS_ONLINE_NET_VERSION,
+			AsciiString("Generals Online Development Team"), AsciiString(""),
+			AsciiString(__TIME__), AsciiString(__DATE__));
+#else
 		TheVersion->setVersion(VERSION_MAJOR, VERSION_MINOR, VERSION_BUILDNUM, VERSION_LOCALBUILDNUM,
 			AsciiString(VERSION_BUILDUSER), AsciiString(VERSION_BUILDLOC),
 			AsciiString(__TIME__), AsciiString(__DATE__));
+#endif // SAGE_GENERALS_ONLINE
 
 		// TheSuperHackers @refactor The instance mutex now lives in its own class.
 

@@ -231,29 +231,11 @@ NGMP_OnlineServicesManager::NGMP_OnlineServicesManager()
 
 std::string NGMP_OnlineServicesManager::GetAPIEndpoint(const char* szEndpoint)
 {
-	// GeneralsX @feature friends-scale self-hosting: resolve the services base
-	// URL at runtime so a self-hosted backend (localhost, or the host friend's
-	// LAN/VPN IP) can be targeted without a rebuild. The env var
-	// GENERALSX_ONLINE_URL overrides; the default is the local self-hosted
-	// instance verified in docs/port/go-online/BACKEND_NOTES.md. The upstream
-	// compile-time official-pool hosts (api.playgenerals.online, gated on
-	// g_Environment) are intentionally not used here — official-pool
-	// compatibility is a non-goal for this fork (see the integration plan).
-	static const std::string s_baseURL = []() -> std::string {
-		const char* pEnv = getenv("GENERALSX_ONLINE_URL");
-		std::string base = (pEnv != nullptr && pEnv[0] != '\0')
-			? std::string(pEnv)
-			: std::string("https://localhost:9000/env/prod/contract/1");
-		// tolerate a trailing slash in the configured value
-		while (!base.empty() && base.back() == '/')
-		{
-			base.pop_back();
-		}
-		NetworkLog(ELogVerbosity::LOG_RELEASE, "[GeneralsX] Online services base URL: %s", base.c_str());
-		return base;
-	}();
-
-	return std::format("{}/{}", s_baseURL, szEndpoint);
+	// GeneralsX @feature BenderAI 11/07/2026 Resolve the same persisted endpoint
+	// on macOS, iOS, Linux, and Windows; an environment override remains useful
+	// for automation. Do not cache it so a setting changed before login applies.
+	const std::string baseURL = Settings.Network_GetResolvedServiceURL();
+	return std::format("{}/{}", baseURL, szEndpoint);
 }
 
 void NGMP_OnlineServicesManager::AttemptLoadSteam()

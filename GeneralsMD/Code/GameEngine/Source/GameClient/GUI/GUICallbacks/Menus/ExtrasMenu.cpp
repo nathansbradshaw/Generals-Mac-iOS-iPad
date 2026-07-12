@@ -39,9 +39,16 @@
 #include "GameClient/Gadget.h"
 #include "GameClient/GadgetSlider.h"
 #include "GameClient/GadgetPushButton.h"
+#include "GameClient/GadgetTextEntry.h"
+#include "GameClient/MessageBox.h"
 #include "GameClient/KeyDefs.h"
 #include "GameClient/WindowLayout.h"
 #include "GameClient/Display.h"
+#if defined(SAGE_GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
+#include "GameNetwork/GeneralsOnline/HTTP/HTTPManager.h"
+#include "GameNetwork/GameSpyOverlay.h"
+#endif
 
 // Widget IDs and pointers
 static NameKeyType sliderMaxCameraHeightID = NAMEKEY_INVALID;
@@ -55,6 +62,13 @@ static GameWindow *sliderMinCameraHeight = nullptr;
 static GameWindow *sliderCameraPitch = nullptr;
 static GameWindow *sliderScrollSpeed = nullptr;
 static GameWindow *sliderDrawDistance = nullptr;
+#if defined(SAGE_GENERALS_ONLINE)
+// GeneralsX @feature BenderAI 11/07/2026 Expose the shared self-hosted
+// GeneralsOnline endpoint through the same engine UI on every platform.
+static NameKeyType textEntryOnlineServerID = NAMEKEY_INVALID;
+static GameWindow *textEntryOnlineServer = nullptr;
+static NameKeyType buttonTestOnlineServerID = NAMEKEY_INVALID;
+#endif
 
 static OptionPreferences *pref = nullptr;
 
@@ -78,12 +92,19 @@ void ExtrasMenuInit(WindowLayout *layout, void *userData)
 	sliderCameraPitchID = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:SliderCameraPitch");
 	sliderScrollSpeedID = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:SliderScrollSpeed");
 	sliderDrawDistanceID = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:SliderDrawDistance");
+#if defined(SAGE_GENERALS_ONLINE)
+	textEntryOnlineServerID = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:TextEntryOnlineServer");
+	buttonTestOnlineServerID = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:ButtonTestOnlineServer");
+#endif
 
 	sliderMaxCameraHeight = TheWindowManager->winGetWindowFromId(nullptr, sliderMaxCameraHeightID);
 	sliderMinCameraHeight = TheWindowManager->winGetWindowFromId(nullptr, sliderMinCameraHeightID);
 	sliderCameraPitch = TheWindowManager->winGetWindowFromId(nullptr, sliderCameraPitchID);
 	sliderScrollSpeed = TheWindowManager->winGetWindowFromId(nullptr, sliderScrollSpeedID);
 	sliderDrawDistance = TheWindowManager->winGetWindowFromId(nullptr, sliderDrawDistanceID);
+#if defined(SAGE_GENERALS_ONLINE)
+	textEntryOnlineServer = TheWindowManager->winGetWindowFromId(nullptr, textEntryOnlineServerID);
+#endif
 
 	pref = NEW OptionPreferences;
 
@@ -108,6 +129,26 @@ void ExtrasMenuInit(WindowLayout *layout, void *userData)
 		Int val = (Int)(pref->getTerrainDrawDistanceScale() * 100.0f);
 		GadgetSliderSetPosition(sliderDrawDistance, val);
 	}
+#if defined(SAGE_GENERALS_ONLINE)
+	if (textEntryOnlineServer) {
+		UnicodeString serverURL;
+		serverURL.translate(NGMP_OnlineServicesManager::Settings.Network_GetServiceURL().c_str());
+		GadgetTextEntrySetText(textEntryOnlineServer, serverURL);
+	}
+#else
+	GameWindow *onlineServerLabel = TheWindowManager->winGetWindowFromId(
+		nullptr, TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:LabelOnlineServer"));
+	GameWindow *onlineServerEntry = TheWindowManager->winGetWindowFromId(
+		nullptr, TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:TextEntryOnlineServer"));
+	GameWindow *onlineServerTest = TheWindowManager->winGetWindowFromId(
+		nullptr, TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:ButtonTestOnlineServer"));
+	if (onlineServerLabel)
+		onlineServerLabel->winHide(TRUE);
+	if (onlineServerEntry)
+		onlineServerEntry->winHide(TRUE);
+	if (onlineServerTest)
+		onlineServerTest->winHide(TRUE);
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -123,6 +164,9 @@ void ExtrasMenuShutdown(WindowLayout *layout, void *userData)
 	sliderCameraPitch = nullptr;
 	sliderScrollSpeed = nullptr;
 	sliderDrawDistance = nullptr;
+#if defined(SAGE_GENERALS_ONLINE)
+	textEntryOnlineServer = nullptr;
+#endif
 
 	if (pref) {
 		delete pref;
@@ -131,10 +175,22 @@ void ExtrasMenuShutdown(WindowLayout *layout, void *userData)
 }
 
 //-------------------------------------------------------------------------------------------------
-static void saveExtras()
+static Bool saveExtras()
 {
 	if (!pref)
-		return;
+		return FALSE;
+
+#if defined(SAGE_GENERALS_ONLINE)
+	if (textEntryOnlineServer) {
+		AsciiString serverURL;
+		serverURL.translate(GadgetTextEntryGetText(textEntryOnlineServer));
+		if (!NGMP_OnlineServicesManager::Settings.Network_SetServiceURL(serverURL.str())) {
+			GSMessageBoxOk(UnicodeString(L"Invalid Online Server Address"),
+				UnicodeString(L"Enter a complete http:// or https:// address, including the server name or IP and port."));
+			return FALSE;
+		}
+	}
+#endif
 
 	Int val;
 
@@ -177,6 +233,8 @@ static void saveExtras()
 		prefString.format("%d", val);
 		(*pref)["TerrainDrawDistanceScale"] = prefString;
 	}
+
+	return TRUE;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -192,7 +250,64 @@ static void setDefaults()
 		GadgetSliderSetPosition(sliderScrollSpeed, 100);
 	if (sliderDrawDistance)
 		GadgetSliderSetPosition(sliderDrawDistance, 105);
+#if defined(SAGE_GENERALS_ONLINE)
+	if (textEntryOnlineServer) {
+		GadgetTextEntrySetText(textEntryOnlineServer,
+			UnicodeString(L"https://localhost:9000/env/prod/contract/1"));
+	}
+#endif
 }
+
+#if defined(SAGE_GENERALS_ONLINE)
+// GeneralsX @feature BenderAI 12/07/2026 Probe the entered self-hosted service
+// before saving it, with platform-neutral HTTP and clear in-menu feedback.
+static void testOnlineServer()
+{
+	if (!textEntryOnlineServer)
+		return;
+
+	AsciiString enteredURL;
+	enteredURL.translate(GadgetTextEntryGetText(textEntryOnlineServer));
+	std::string normalizedURL;
+	if (!GenOnlineSettings::Network_NormalizeServiceURL(enteredURL.str(), &normalizedURL)) {
+		GSMessageBoxOk(UnicodeString(L"Invalid Online Server Address"),
+			UnicodeString(L"Enter a complete http:// or https:// address, including the server name or IP and port."));
+		return;
+	}
+
+	NGMP_OnlineServicesManager *manager = NGMP_OnlineServicesManager::GetInstance();
+	if (!manager || !manager->GetHTTPManager()) {
+		GSMessageBoxOk(UnicodeString(L"Connection Test Unavailable"),
+			UnicodeString(L"GeneralsOnline networking is not initialized."));
+		return;
+	}
+
+	GameWindow *testButton = TheWindowManager->winGetWindowFromId(nullptr, buttonTestOnlineServerID);
+	if (testButton)
+		testButton->winEnable(FALSE);
+
+	std::map<std::string, std::string> headers;
+	const std::string testURL = normalizedURL + "/ServiceConfig";
+	manager->GetHTTPManager()->SendGETRequest(testURL.c_str(), EIPProtocolVersion::DONT_CARE, headers,
+		[](bool requestSucceeded, int statusCode, std::string, HTTPRequest *) {
+			GameWindow *button = TheWindowManager->winGetWindowFromId(nullptr, buttonTestOnlineServerID);
+			if (button)
+				button->winEnable(TRUE);
+
+			if (requestSucceeded && statusCode >= 200 && statusCode < 300) {
+				GSMessageBoxOk(UnicodeString(L"Connection Successful"),
+					UnicodeString(L"The GeneralsOnline server is reachable and returned a valid HTTP response."));
+			} else {
+				UnicodeString detail;
+				if (statusCode > 0)
+					detail.format(L"The server returned HTTP status %d. Check the address and server configuration.", statusCode);
+				else
+					detail = UnicodeString(L"The server could not be reached within five seconds. Check the address, firewall, TLS certificate, and local-network access.");
+				GSMessageBoxOk(UnicodeString(L"Connection Failed"), detail);
+			}
+		}, nullptr, 5000);
+}
+#endif
 
 //-------------------------------------------------------------------------------------------------
 WindowMsgHandledType ExtrasMenuSystem(GameWindow *window, UnsignedInt msg,
@@ -231,7 +346,8 @@ WindowMsgHandledType ExtrasMenuSystem(GameWindow *window, UnsignedInt msg,
 				TheShell->pop();
 			}
 			else if (controlID == buttonAccept) {
-				saveExtras();
+				if (!saveExtras())
+					break;
 				if (pref) {
 					pref->write();
 				}
@@ -240,6 +356,11 @@ WindowMsgHandledType ExtrasMenuSystem(GameWindow *window, UnsignedInt msg,
 			else if (controlID == buttonDefaults) {
 				setDefaults();
 			}
+#if defined(SAGE_GENERALS_ONLINE)
+			else if (controlID == buttonTestOnlineServerID) {
+				testOnlineServer();
+			}
+#endif
 			break;
 		}
 

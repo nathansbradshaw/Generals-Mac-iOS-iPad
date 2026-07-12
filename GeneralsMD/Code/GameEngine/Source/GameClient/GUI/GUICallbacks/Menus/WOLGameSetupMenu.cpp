@@ -1183,6 +1183,12 @@ static void handleLimitSuperweaponsClick()
 
 #endif
 
+#if defined(SAGE_GENERALS_ONLINE)
+// Set by -startAutostart: host auto-presses Start once everyone is ready and the
+// mesh is connected (test hook for the game-start / transport handoff).
+Bool g_GeneralsXStartAutostart = FALSE;
+#endif
+
 static void StartPressed()
 {
 	Bool isReady = TRUE;
@@ -2825,6 +2831,72 @@ void WOLGameSetupMenuUpdate( WindowLayout * layout, void *userData)
 {
 	// Refresh only the fast-changing connection indicators each frame.
 	WOLRefreshConnectionIndicators();
+
+#if defined(SAGE_GENERALS_ONLINE)
+	// GeneralsX @bugfix BenderAI 10/07/2026 The GameSpy peer slot-list event
+	// normally re-enables a joining client's Accept button. NGMP receives lobby
+	// state through the services cache instead, so that event never arrives and
+	// the button remains disabled despite a valid local slot.
+	if (!initialAcceptEnable && buttonStart != nullptr)
+	{
+		NGMP_OnlineServices_LobbyInterface* pLI = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();
+		NGMPGame* pGame = pLI == nullptr ? nullptr : pLI->GetCurrentGame();
+		if (pLI != nullptr && pGame != nullptr && !pLI->IsHost() && pGame->isInGame())
+		{
+			GameSlot* pLocalSlot = pGame->getSlot(pGame->getLocalSlotNum());
+			if (pLocalSlot != nullptr && pLocalSlot->isHuman())
+			{
+				buttonStart->winEnable(TRUE);
+				initialAcceptEnable = TRUE;
+			}
+		}
+	}
+#endif
+
+	// -startAutostart: host auto-presses Start once every human is ready and the
+	// P2P mesh has a connection to each peer, so the game-start / transport
+	// handoff can be exercised headlessly. Retry on an interval (StartPressed
+	// bails harmlessly if the mesh isn't connected yet).
+	if (g_GeneralsXStartAutostart)
+	{
+		static Int s_startAutostartDelay = 180;	// ~3s initial settle
+		NGMP_OnlineServices_LobbyInterface* pLI = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();
+		if (pLI != nullptr && pLI->IsHost() && TheNGMPGame != nullptr && !TheNGMPGame->isGameInProgress())
+		{
+			if (s_startAutostartDelay > 0)
+			{
+				--s_startAutostartDelay;
+			}
+			else
+			{
+				s_startAutostartDelay = 120;	// retry ~2s until the mesh connects + all ready
+
+				// require every other human to be ready and mesh-connected first,
+				// so we don't spam the "still connecting" path.
+				NetworkMesh* pMesh = NGMP_OnlineServicesManager::GetNetworkMesh();
+				NGMP_OnlineServices_AuthInterface* pAuth = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
+				if (pMesh != nullptr && pAuth != nullptr)
+				{
+					int64_t myUserID = pAuth->GetUserID();
+					int numHumans = 0;
+					bool allReady = true;
+					for (LobbyMemberEntry& m : pLI->GetCurrentLobby().members)
+					{
+						if (!m.IsHuman())
+							continue;
+						++numHumans;
+						if (m.user_id != myUserID && !m.m_bIsReady)
+							allReady = false;
+					}
+					if (numHumans >= 2 && allReady && (int)pMesh->GetAllConnections().size() >= numHumans - 1)
+					{
+						DEBUG_LOG(("[GeneralsX] -startAutostart: all ready + mesh connected, pressing Start"));
+						StartPressed();
+					}
+				}
+			}
+		}
+	}
 
 	// need to exit?
 	if (NGMP_OnlineServicesManager::GetInstance() != nullptr && NGMP_OnlineServicesManager::GetInstance()->IsPendingFullTeardown())
@@ -4478,6 +4550,11 @@ WindowMsgHandledType WOLGameSetupMenuSystem( GameWindow *window, UnsignedInt msg
 
 						// force a refresh of our local lobby properties to sync to remote players
 						pLobbyInterface->ApplyLocalUserPropertiesToCurrentNetworkRoom();
+
+						// GeneralsX @bugfix BenderAI 10/07/2026 Reflect the accepted state immediately.
+						// The service refresh arrives asynchronously, which otherwise leaves the
+						// local ready indicator unchecked and makes this click appear to do nothing.
+						WOLDisplaySlotList();
 
 						/*
 						UnicodeString hostName = game->getSlot(0)->getName();

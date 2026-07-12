@@ -20,6 +20,8 @@
 #include "ValveNetworkingSockets/steam/isteamnetworkingsockets.h"
 #include "ValveNetworkingSockets/steam/steamnetworkingsockets.h"
 
+#include <cstdlib>
+
 bool g_bForceRelay = false;
 UnsignedInt m_exeCRCOriginal = 0;
 
@@ -414,9 +416,11 @@ class CSignalingClient : public ISignalingClient
 	};
 	ISteamNetworkingSockets* const m_pSteamNetworkingSockets;
 	std::deque<QueuedSend> m_queueSend;
+	std::mutex m_queueSendMutex;
 
 	void CloseSocket()
 	{
+		std::scoped_lock<std::mutex> lock(m_queueSendMutex);
 		m_queueSend.clear();
 	}
 
@@ -443,31 +447,24 @@ public:
 	// Send the signal.
 	void Send(int64_t target_user_id, std::vector<uint8_t>& vecPayload)
 	{
-		std::shared_ptr<WebSocket> pWS = NGMP_OnlineServicesManager::GetWebSocket();
-		if (pWS)
+		// GeneralsX @bugfix BenderAI 10/07/2026 GNS invokes this from arbitrary
+		// callback threads. This queue is unrelated to WebSocket receive state;
+		// protecting it with the WebSocket's timed lock dropped P2P signals whenever
+		// the main-thread WebSocket tick was active.
+		std::scoped_lock<std::mutex> lock(m_queueSendMutex);
+
+		// If we're getting backed up, delete the oldest entries. Signals are
+		// best-effort and stale entries are least useful.
+		while (m_queueSend.size() > 128)
 		{
-			if (!pWS->AcquireLock())
-			{
-				return;
-			}
-
-			// If we're getting backed up, delete the oldest entries.  Remember,
-			// we are only required to do best-effort delivery.  And old signals are the
-			// most likely to be out of date (either old data, or the client has already
-			// timed them out and queued a retry).
-			while (m_queueSend.size() > 128)
-			{
-				NetworkLog(ELogVerbosity::LOG_RELEASE, "Signaling send queue is backed up.  Discarding oldest signals\n");
-				m_queueSend.pop_front();
-			}
-
-			QueuedSend newEntry = QueuedSend();
-			newEntry.target_user_id = target_user_id;
-			newEntry.vecPayload = vecPayload;
-			m_queueSend.push_back(newEntry);
-
-			pWS->ReleaseLock();
+			NetworkLog(ELogVerbosity::LOG_RELEASE, "Signaling send queue is backed up.  Discarding oldest signals\n");
+			m_queueSend.pop_front();
 		}
+
+		QueuedSend newEntry = QueuedSend();
+		newEntry.target_user_id = target_user_id;
+		newEntry.vecPayload = vecPayload;
+		m_queueSend.push_back(std::move(newEntry));
 	}
 
 	ISteamNetworkingConnectionSignaling* CreateSignalingForConnection(
@@ -507,20 +504,28 @@ public:
 				return;
 			}
 
-			// Drain the socket
-			// Flush send queue
-			while (!m_queueSend.empty())
-			{
-				QueuedSend sendData = m_queueSend.front();
+			// GeneralsX @bugfix BenderAI 10/07/2026 Copy outbound signals while
+			// holding the WebSocket lock, then send after releasing it. WebSocket::Send
+			// acquires the same non-recursive lock; sending in this critical section
+			// silently drops every P2P rendezvous message.
+			std::deque<QueuedSend> pendingSends;
 
-				pWS->SendData_Signalling(sendData.target_user_id, sendData.vecPayload);
-				m_queueSend.pop_front();
+			{
+				std::scoped_lock<std::mutex> lock(m_queueSendMutex);
+				pendingSends.swap(m_queueSend);
 			}
 
 			// TODO_NGMP: Avoid copy
 			std::queue<std::vector<uint8_t>> pendingSignals = pWS->m_pendingSignals;
 			pWS->m_pendingSignals = std::queue<std::vector<uint8_t>>();
 			pWS->ReleaseLock();
+
+			while (!pendingSends.empty())
+			{
+				QueuedSend& sendData = pendingSends.front();
+				pWS->SendData_Signalling(sendData.target_user_id, sendData.vecPayload);
+				pendingSends.pop_front();
+			}
 
 			// Now dispatch any buffered signals
 			if (!pendingSignals.empty())
@@ -663,11 +668,18 @@ NetworkMesh::NetworkMesh()
 		return;
 	}
 
-	// TODO_STEAM: Dont hardcode, get everything from service
-	SteamNetworkingUtils()->SetGlobalConfigValueString(k_ESteamNetworkingConfig_P2P_STUN_ServerList, "stun:stun.playgenerals.online:53,stun:stun.playgenerals.online:3478,stun.l.google.com:19302,stun1.l.google.com:19302,stun2.l.google.com:19302,stun3.l.google.com:19302,stun4.l.google.com:19302");
+	// GeneralsX @feature BenderAI 10/07/2026 Self-hosted deployments must not
+	// depend on the production GeneralsOnline STUN/TURN host.  A friend group
+	// can supply its LAN/VPN relay through these environment variables.
+	const char* defaultStunList = "stun.l.google.com:19302,stun1.l.google.com:19302,stun2.l.google.com:19302";
+	const char* envStunList = std::getenv("GENERALSX_ONLINE_STUN_SERVERS");
+	const char* stunList = envStunList != nullptr && envStunList[0] != '\0' ? envStunList : defaultStunList;
+	SteamNetworkingUtils()->SetGlobalConfigValueString(k_ESteamNetworkingConfig_P2P_STUN_ServerList, stunList);
 
-	// comma seperated setting lists
-	const char* turnList = "turn:turn.playgenerals.online:53?transport=udp,turn:turn.playgenerals.online:3478?transport=udp";
+	const char* defaultTurnList = "turn:turn.playgenerals.online:53?transport=udp,turn:turn.playgenerals.online:3478?transport=udp";
+	const char* envTurnList = std::getenv("GENERALSX_ONLINE_TURN_SERVERS");
+	const char* turnList = envTurnList != nullptr && envTurnList[0] != '\0' ? envTurnList : defaultTurnList;
+	NetworkLog(ELogVerbosity::LOG_RELEASE, "[NGMP] ICE configured with STUN '%s' and TURN '%s'", stunList, turnList);
 
 	m_strTurnUsername = pLobbyInterface->GetLobbyTurnUsername();
 	m_strTurnToken = pLobbyInterface->GetLobbyTurnToken();

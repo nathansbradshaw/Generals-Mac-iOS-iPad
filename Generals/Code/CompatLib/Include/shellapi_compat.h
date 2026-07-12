@@ -23,6 +23,12 @@
 inline HINSTANCE ShellExecuteA(HWND /*hwnd*/, LPCSTR /*lpVerb*/, LPCSTR lpFile,
                                LPCSTR /*lpParameters*/, LPCSTR /*lpDirectory*/, int /*nShowCmd*/)
 {
+#if defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
+    // GeneralsX @build BenderAI 11/07/2026 iOS forbids process creation and
+    // this compatibility API is only used by the non-MVP browser/updater path.
+    (void)lpFile;
+    return (HINSTANCE)(uintptr_t)32;
+#else
     if (lpFile == nullptr || strchr(lpFile, '\'') != nullptr)
         return (HINSTANCE)(uintptr_t)2; // SE_ERR_FNF-ish; refuse anything unquotable
 
@@ -30,6 +36,7 @@ inline HINSTANCE ShellExecuteA(HWND /*hwnd*/, LPCSTR /*lpVerb*/, LPCSTR lpFile,
     snprintf(cmd, sizeof(cmd), "%s '%s' >/dev/null 2>&1 &", GENERALSX_OPEN_CMD, lpFile);
     int rc = system(cmd);
     return (HINSTANCE)(uintptr_t)(rc == 0 ? 33 : 32);
+#endif
 }
 
 typedef struct _SHELLEXECUTEINFOA

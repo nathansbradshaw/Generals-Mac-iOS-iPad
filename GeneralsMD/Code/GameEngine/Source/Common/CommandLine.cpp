@@ -465,6 +465,20 @@ Int parseJoinAutostart(char *args[], int num)
 	g_GeneralsXJoinAutostart = TRUE;
 	return 1;
 }
+
+// GeneralsX test hook: host auto-presses Start once every human is ready and the
+// P2P mesh is connected. Implies -hostAutostart. Drives the game-start /
+// NextGenTransport handoff headlessly. See WOLGameSetupMenu.cpp.
+Int parseStartAutostart(char *args[], int num)
+{
+	extern Bool g_GeneralsXOnlineAutostart;
+	extern Bool g_GeneralsXHostAutostart;
+	extern Bool g_GeneralsXStartAutostart;
+	g_GeneralsXOnlineAutostart = TRUE;
+	g_GeneralsXHostAutostart = TRUE;
+	g_GeneralsXStartAutostart = TRUE;
+	return 1;
+}
 #endif
 
 Int parseReplay(char *args[], int num)
@@ -1191,6 +1205,7 @@ static CommandLineParam paramsForStartup[] =
 	{ "-onlineAutostart", parseOnlineAutostart },
 	{ "-hostAutostart", parseHostAutostart },
 	{ "-joinAutostart", parseJoinAutostart },
+	{ "-startAutostart", parseStartAutostart },
 #endif
 
 	// TheSuperHackers @feature helmutbuhler 13/04/2025

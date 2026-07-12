@@ -3,6 +3,8 @@
 #include "../OnlineServices_LobbyInterface.h"
 #include "../OnlineServices_Init.h"
 
+#include <cstdlib>
+
 #define SETTINGS_KEY_CAMERA "camera"
 #define SETTINGS_KEY_CAMERA_MIN_HEIGHT "min_height"
 #define SETTINGS_KEY_CAMERA_MOVE_SPEED_RATIO "move_speed_ratio"
@@ -32,6 +34,7 @@
 #define SETTINGS_KEY_NETWORK "network"
 #define SETTINGS_KEY_NETWORK_HTTP_VERSION "http_version"
 #define SETTINGS_KEY_NETWORK_USE_ALTERNATIVE_ENDPOINT "use_alternative_endpoint"
+#define SETTINGS_KEY_NETWORK_SERVICE_URL "service_url"
 
 #define SETTINGS_KEY_PLUGINS "plugins"
 #define SETTINGS_KEY_PLUGINS_ANTICHEAT "anticheat"
@@ -43,6 +46,74 @@
 GenOnlineSettings::GenOnlineSettings()
 {
 	
+}
+
+// GeneralsX @feature BenderAI 11/07/2026 Validate and persist one services URL
+// with identical behavior on every supported platform.
+bool GenOnlineSettings::Network_NormalizeServiceURL(const std::string& serviceURL, std::string* normalizedURL)
+{
+	if (normalizedURL == nullptr)
+	{
+		return false;
+	}
+
+	size_t first = serviceURL.find_first_not_of(" \t\r\n");
+	if (first == std::string::npos)
+	{
+		return false;
+	}
+	size_t last = serviceURL.find_last_not_of(" \t\r\n");
+	std::string result = serviceURL.substr(first, last - first + 1);
+
+	if (result.rfind("https://", 0) != 0 && result.rfind("http://", 0) != 0)
+	{
+		return false;
+	}
+
+	const size_t schemeEnd = result.find("://") + 3;
+	const size_t hostEnd = result.find('/', schemeEnd);
+	const std::string authority = result.substr(schemeEnd, hostEnd - schemeEnd);
+	if (authority.empty() || authority.find_first_of(" \t\r\n") != std::string::npos)
+	{
+		return false;
+	}
+
+	while (result.size() > schemeEnd && result.back() == '/')
+	{
+		result.pop_back();
+	}
+
+	*normalizedURL = result;
+	return true;
+}
+
+std::string GenOnlineSettings::Network_GetResolvedServiceURL() const
+{
+	// GeneralsX @feature BenderAI 11/07/2026 One endpoint precedence rule is
+	// shared by every platform: deployment override, persisted setting, default.
+	const char* environmentURL = std::getenv("GENERALSX_ONLINE_URL");
+	std::string normalizedURL;
+	if (environmentURL != nullptr && Network_NormalizeServiceURL(environmentURL, &normalizedURL))
+	{
+		return normalizedURL;
+	}
+	if (Network_NormalizeServiceURL(m_Network_ServiceURL, &normalizedURL))
+	{
+		return normalizedURL;
+	}
+	return "https://localhost:9000/env/prod/contract/1";
+}
+
+bool GenOnlineSettings::Network_SetServiceURL(const std::string& serviceURL)
+{
+	std::string normalizedURL;
+	if (!Network_NormalizeServiceURL(serviceURL, &normalizedURL))
+	{
+		return false;
+	}
+	m_Network_ServiceURL = normalizedURL;
+	Save();
+	return true;
 }
 
 float GenOnlineSettings::DetermineCameraMaxHeight()
@@ -182,6 +253,16 @@ void GenOnlineSettings::Load(void)
                 {
                     m_Network_UseAlternativeEndpoint = networkSettings[SETTINGS_KEY_NETWORK_USE_ALTERNATIVE_ENDPOINT];
                 }
+
+				if (networkSettings.contains(SETTINGS_KEY_NETWORK_SERVICE_URL))
+				{
+					std::string normalizedURL;
+					const std::string savedURL = networkSettings[SETTINGS_KEY_NETWORK_SERVICE_URL];
+					if (Network_NormalizeServiceURL(savedURL, &normalizedURL))
+					{
+						m_Network_ServiceURL = normalizedURL;
+					}
+				}
             }
 
 			if (jsonSettings.contains(SETTINGS_KEY_DEBUG))
@@ -316,7 +397,8 @@ void GenOnlineSettings::Save()
             SETTINGS_KEY_NETWORK,
                 {
                     {SETTINGS_KEY_NETWORK_HTTP_VERSION, m_Network_HTTPVersion},
-                    {SETTINGS_KEY_NETWORK_USE_ALTERNATIVE_ENDPOINT, m_Network_UseAlternativeEndpoint}
+                    {SETTINGS_KEY_NETWORK_USE_ALTERNATIVE_ENDPOINT, m_Network_UseAlternativeEndpoint},
+					{SETTINGS_KEY_NETWORK_SERVICE_URL, m_Network_ServiceURL}
                 }
         },
 

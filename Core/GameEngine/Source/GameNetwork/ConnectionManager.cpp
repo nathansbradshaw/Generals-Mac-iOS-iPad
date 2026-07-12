@@ -44,6 +44,9 @@
 #include "GameClient/MessageBox.h"
 #include "GameNetwork/ConnectionManager.h"
 #include "GameNetwork/UDPTransport.h"
+#if defined(SAGE_GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NextGenTransport.h"
+#endif
 #include "GameNetwork/LANAPICallbacks.h"
 #include "GameNetwork/NAT.h"
 #include "GameNetwork/NetCommandWrapperList.h"
@@ -1598,7 +1601,18 @@ void ConnectionManager::initTransport() {
 	DEBUG_LOG(("ConnectionManager::initTransport - Initializing Transport"));
 
 	delete m_transport;
+
+#if defined(SAGE_GENERALS_ONLINE)
+	// GeneralsX @bugfix BenderAI 11/07/2026 Use the NGMP mesh transport for
+	// GeneralsOnline matches. LAN games retain the legacy UDP transport.
+	if (TheLAN == nullptr) {
+		m_transport = new NextGenTransport;
+	} else {
+		m_transport = new UDPTransport;
+	}
+#else
 	m_transport = new UDPTransport;
+#endif
 	m_transport->reset();
 	m_transport->init(m_localAddr, m_localPort);
 }

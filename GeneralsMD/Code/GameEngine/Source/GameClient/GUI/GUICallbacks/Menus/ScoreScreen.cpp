@@ -1649,6 +1649,13 @@ winName.format("ScoreScreen.wnd:StaticTextScore%d", pos);
 	if ( screenType == SCORESCREEN_INTERNET )
 	{
 		DEBUG_LOG(("populatePlayerInfo() - SCORESCREEN_INTERNET"));
+#if defined(SAGE_GENERALS_ONLINE)
+		// GeneralsX @bugfix BenderAI 11/07/2026 The legacy Internet score path
+		// below uploads GameSpy ladder/profile statistics through singletons that
+		// do not exist for NGMP. Friends-scale GeneralsOnline deliberately excludes
+		// stats and ladders, while the visible score data was populated above.
+		return;
+#endif
 		if (TheGameSpyGame && !TheGameSpyGame->getUseStats()
 		 && !TheGameSpyGame->isQMGame() )  //QuickMatch games always record stats
 			return;	//the host has requested not to record stats for this game.

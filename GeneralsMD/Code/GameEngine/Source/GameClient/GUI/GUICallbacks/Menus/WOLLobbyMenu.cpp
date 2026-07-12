@@ -977,8 +977,11 @@ void PopulateLobbyPlayerListbox()
 				// NOTE: We dont clear until we get a response, so there's no period where the box is empty
                 // save off old selection
                 Int maxSelectedItems = GadgetListBoxGetNumEntries(listboxLobbyPlayers);
-                Int* selectedIndices;
-                GadgetListBoxGetSelected(listboxLobbyPlayers, (Int*)(&selectedIndices));
+				// GeneralsX @bugfix BenderAI 11/07/2026 Supply real storage for the
+				// selected indices. The imported 32-bit code wrote Int values into an
+				// uninitialized pointer variable, then dereferenced the corrupted pointer.
+				std::vector<Int> selectedIndices(static_cast<size_t>(maxSelectedItems) + 1, -1);
+				GadgetListBoxGetSelected(listboxLobbyPlayers, selectedIndices.data());
                 std::set<int> selectedUserIDs;
                 Int numSelected = 0;
                 for (Int i = 0; i < maxSelectedItems; ++i)

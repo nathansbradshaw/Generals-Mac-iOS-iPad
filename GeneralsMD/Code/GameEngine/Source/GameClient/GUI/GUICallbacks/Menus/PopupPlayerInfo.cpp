@@ -178,6 +178,12 @@ Int GetAdditionalDisconnectsFromUserFile(Int playerID)
 		return 0;
 	}
 
+	// GeneralsX @bugfix 11/07/2026 TheGameSpyInfo is null on the NGMP services
+	// path (roster stats come from the GeneralsOnline backend, not GameSpy).
+	if (TheGameSpyInfo == nullptr) {
+		return retval;
+	}
+
 	if (TheGameSpyInfo->getAdditionalDisconnects() > 0 && !retval)
 	{
 		DEBUG_LOG(("Clearing additional disconnects"));
@@ -195,6 +201,11 @@ Int GetAdditionalDisconnectsFromUserFile(Int playerID)
 void GetAdditionalDisconnectsFromUserFile(PSPlayerStats *stats)
 {
 	if (!stats || stats->id == 0) {
+		return;
+	}
+
+	// GeneralsX @bugfix 11/07/2026 TheGameSpyInfo is null on the NGMP services path.
+	if (TheGameSpyInfo == nullptr) {
 		return;
 	}
 

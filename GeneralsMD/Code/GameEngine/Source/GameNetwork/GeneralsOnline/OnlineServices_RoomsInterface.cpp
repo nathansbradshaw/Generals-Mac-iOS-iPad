@@ -229,20 +229,28 @@ void WebSocket::Send(const char* send_payload)
 {
 	if (!AcquireLock())
 	{
+		std::scoped_lock<std::mutex> lock(m_outboundQueueMutex);
+		m_vecQueuedOutboungMsgs.push_back(std::string(send_payload));
 		return;
 	}
 
 	if (!m_bConnected)
 	{
 		// just queue it instead
-		m_vecQueuedOutboungMsgs.push_back(std::string(send_payload));
+		{
+			std::scoped_lock<std::mutex> lock(m_outboundQueueMutex);
+			m_vecQueuedOutboungMsgs.push_back(std::string(send_payload));
+		}
 
 		ReleaseLock();
 		return;
 	}
 
 	size_t sent;
-	CURLcode result = curl_ws_send(m_pCurlWS, send_payload, strlen(send_payload), &sent, 0, CURLWS_BINARY);
+	// The service protocol is JSON over text WebSocket frames.  Sending these as
+	// binary happens to work for simple lobby traffic on some libcurl builds, but
+	// ASP.NET's receive loop does not reliably dispatch the larger ICE offers.
+	CURLcode result = curl_ws_send(m_pCurlWS, send_payload, strlen(send_payload), &sent, 0, CURLWS_TEXT);
 
 	if (result != CURLE_OK)
 	{
@@ -637,19 +645,24 @@ void WebSocket::Tick()
         return;
     }
 
-	// send anything we have buffered (e.g. things that were queued while not connected)
-	for (std::string& strPayload : m_vecQueuedOutboungMsgs)
+	// Send anything buffered while another thread owned the WebSocket I/O lock.
+	// Swap under the dedicated queue lock so GameNetworkingSockets callbacks can
+	// safely enqueue P2P rendezvous payloads concurrently.
+	std::vector<std::string> queuedOutboundMessages;
+	{
+		std::scoped_lock<std::mutex> lock(m_outboundQueueMutex);
+		queuedOutboundMessages.swap(m_vecQueuedOutboungMsgs);
+	}
+	for (std::string& strPayload : queuedOutboundMessages)
 	{
         size_t sent;
-        CURLcode result = curl_ws_send(m_pCurlWS, strPayload.c_str(), strPayload.length(), &sent, 0, CURLWS_BINARY);
+		CURLcode result = curl_ws_send(m_pCurlWS, strPayload.c_str(), strPayload.length(), &sent, 0, CURLWS_TEXT);
 
         if (result != CURLE_OK)
         {
             NetworkLog(ELogVerbosity::LOG_RELEASE, "curl_ws_send() failed: %s\n", curl_easy_strerror(result));
         }
 	}
-	m_vecQueuedOutboungMsgs.clear();
-
 	// do recv
 	size_t rlen = 0;
 	const struct curl_ws_frame* meta = nullptr;

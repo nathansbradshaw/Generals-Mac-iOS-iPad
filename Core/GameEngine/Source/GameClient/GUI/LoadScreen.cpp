@@ -1683,11 +1683,16 @@ GameSlot *lSlot = game->getSlot(game->getLocalSlotNum());
 		m_playerNames[netSlot]->winSetEnabledTextColors(houseColor, m_playerNames[netSlot]->winGetEnabledTextBorderColor());
 
 		// Get the stats for the player
-		PSPlayerStats stats = TheGameSpyPSMessageQueue->findPlayerStatsByID(slot->getProfileID());
+		// GeneralsX @bugfix 11/07/2026 TheGameSpyPSMessageQueue/TheGameSpyInfo are
+		// null on the NGMP services path; the multiplayer load screen crashed here at
+		// match start. Fall back to empty stats (the W/L and rank display is cosmetic).
+		PSPlayerStats stats = TheGameSpyPSMessageQueue
+			? TheGameSpyPSMessageQueue->findPlayerStatsByID(slot->getProfileID())
+			: PSPlayerStats();
 		DEBUG_LOG(("LoadScreen - populating info for %ls(%d) - stats returned id %d",
 			slot->getName().str(), slot->getProfileID(), stats.id));
 
-		Bool isPreorder = TheGameSpyInfo->didPlayerPreorder(stats.id);
+		Bool isPreorder = TheGameSpyInfo ? TheGameSpyInfo->didPlayerPreorder(stats.id) : FALSE;
 		Int rankPoints = CalculateRank(stats);
 		Int favSide = GetFavoriteSide(stats);
 		const Image *preorderImg = TheMappedImageCollection->findImageByName("OfficersClubsmall");

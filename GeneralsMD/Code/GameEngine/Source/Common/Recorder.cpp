@@ -48,6 +48,12 @@
 #include "Common/OptionPreferences.h"
 #include "Common/version.h"
 
+#if defined(SAGE_GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NGMPGame.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
+extern NGMPGame* TheNGMPGame;
+#endif
+
 // TheSuperHackers @build fighter19 11/02/2026 POSIX CopyFile implementation for Linux
 #ifndef _WIN32
 #include <fstream>
@@ -604,8 +610,16 @@ void RecorderClass::startRecording(GameDifficulty diff, Int originalGameMode, In
 		}
 		else
 		{
+#if defined(SAGE_GENERALS_ONLINE)
+			// GeneralsX @bugfix 11/07/2026 On the NGMP services path TheGameSpyGame
+			// is null; the current-match GameInfo lives in TheNGMPGame. Dereferencing
+			// TheGameSpyGame here crashed at match start (SIGSEGV in startRecording).
+			theSlotList = GameInfoToAsciiString(TheNGMPGame);
+			localIndex = TheNGMPGame->getLocalSlotNum();
+#else
 			theSlotList = GameInfoToAsciiString(TheGameSpyGame);
 			localIndex = TheGameSpyGame->getLocalSlotNum();
+#endif
 		}
 	}
 	else
@@ -1706,8 +1720,13 @@ AsciiString RecorderClass::getLastReplayFileName()
 		GameInfo *game = nullptr;
 		if (TheLAN)
 			game = TheLAN->GetMyGame();
+#if defined(SAGE_GENERALS_ONLINE)
+		else if (NGMP_OnlineServicesManager::GetInstance() != nullptr)
+			game = TheNGMPGame;
+#else
 		else if (TheGameSpyInfo)
 			game = TheGameSpyGame;
+#endif
 		if (game)
 		{
 			AsciiString players;

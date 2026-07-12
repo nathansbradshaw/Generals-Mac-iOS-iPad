@@ -77,6 +77,11 @@ mkdir -p "${RUNTIME_DIR}"
 echo "  Copying GeneralsXZH..."
 cp -v "${BINARY_SRC}" "${RUNTIME_DIR}/GeneralsXZH"
 chmod +x "${RUNTIME_DIR}/GeneralsXZH"
+# GeneralsX @bugfix BenderAI 10/07/2026 Re-sign after copying. macOS can reject
+# an in-place overwritten ad-hoc Mach-O as an invalid code-signature page even
+# though the source build's embedded signature verifies successfully.
+codesign --force --sign - "${RUNTIME_DIR}/GeneralsXZH"
+codesign --verify --verbose=2 "${RUNTIME_DIR}/GeneralsXZH"
 
 echo "  Copying SDL3 libraries..."
 cp -v "${SDL3_LIB_DIR}"/libSDL3.0.dylib "${RUNTIME_DIR}/"

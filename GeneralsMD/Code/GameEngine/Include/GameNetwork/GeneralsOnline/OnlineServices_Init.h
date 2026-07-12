@@ -140,6 +140,11 @@ public:
 	std::vector<char> m_vecWSPartialBuffer;
 
 	std::vector<std::string> m_vecQueuedOutboungMsgs;
+	// GeneralsX @bugfix BenderAI 10/07/2026 Outbound signalling can originate
+	// from GameNetworkingSockets callbacks while Tick owns m_mutex. Keep its
+	// queue independently synchronized so a short I/O lock contention does not
+	// discard a rendezvous packet.
+	std::mutex m_outboundQueueMutex;
 
 	std::function<void(void)> m_fnWebsocketConnectedCallback = nullptr;
 

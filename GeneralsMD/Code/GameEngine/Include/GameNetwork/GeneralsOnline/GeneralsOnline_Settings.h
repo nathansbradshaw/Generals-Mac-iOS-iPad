@@ -73,6 +73,10 @@ public:
 	}
 
 	bool Network_UseAlternativeEndpoint() const { return m_Network_UseAlternativeEndpoint; }
+	const std::string& Network_GetServiceURL() const { return m_Network_ServiceURL; }
+	std::string Network_GetResolvedServiceURL() const;
+	bool Network_SetServiceURL(const std::string& serviceURL);
+	static bool Network_NormalizeServiceURL(const std::string& serviceURL, std::string* normalizedURL);
 	EHTTPVersion Network_GetHTTPVersion() const { return m_Network_HTTPVersion; }
 	int Network_GetHTTPVersionForCurl() const
 	{
@@ -143,4 +147,5 @@ private:
 
 	EHTTPVersion m_Network_HTTPVersion = EHTTPVersion::HTTP_VERSION_AUTO;
 	bool m_Network_UseAlternativeEndpoint = false;
+	std::string m_Network_ServiceURL = "https://localhost:9000/env/prod/contract/1";
 };

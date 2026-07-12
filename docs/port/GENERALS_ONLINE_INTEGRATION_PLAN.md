@@ -120,16 +120,38 @@ then cross-platform with Windows/Linux friends.
 
 ## Phase 5 — Apple↔Apple match flow
 
-- [ ] Join/host a custom match Mac↔Mac through our backend/relay.
-      *(T5.0 done: auto-join-room hang fixed. T5.1 part 1 done: NGMP
-      `SearchForLobbies`-driven game list ported into `RefreshGameListBox` —
-      entering the lobby now queries `/Lobbies` (200) and renders results
-      (name/map/players), stable. Remaining: two Mac clients — host from one,
-      see+join from the other, start, play. See PORTING_LOG.md.)*
-- [ ] Verify game-start handoff (their NextGenTransport replaces the UDP
+- [x] Join/host a custom match Mac↔Mac through our backend/relay.
+      *(Verified end-to-end 2026-07-11: two independent accounts host/join,
+      ready, establish a direct ICE connection, start, play a complete match,
+      show results, and return to the online lobby.)*
+- [x] Verify game-start handoff (their NextGenTransport replaces the UDP
       transport; online traffic is unicast — no broadcast issues like LAN had).
-- [ ] iOS bring-up: lifecycle (reuse the render/sim pause machinery; sockets
+      *(Verified 2026-07-11. Missing client→server WS dispatch, signalling
+      queue locking, and the omitted `ConnectionManager` transport-selection
+      hook were fixed; in-match traffic now uses `NextGenTransport` over the
+      connected GameNetworkingSockets mesh. See PORTING_LOG.md.)*
+- [~] iOS bring-up: lifecycle (reuse the render/sim pause machinery; sockets
       reconnect on foreground), interface selection (revisit `IP_BOUND_IF`).
+      *(Compile milestone complete 2026-07-11: the ARM64 iOS app builds with
+      `SAGE_GENERALS_ONLINE=ON`, GameNetworkingSockets/ICE, WebSocket curl, and
+      OpenSSL. Device login plus background/foreground reconnection remain.)*
+- [~] Add a cross-platform, persistent in-game **GeneralsOnline server
+      address** setting for macOS, iOS, Linux, and Windows. The shared backend
+      setting is now implemented as `network.service_url` in
+      `GeneralsOnlineData/settings.json`; all four platforms resolve it through
+      the same code before auth and WebSocket initialization. The
+      `GENERALSX_ONLINE_URL` environment override remains highest priority for
+      development and automation. The Extra Options menu now exposes the value
+      through the engine's native text-entry widget on every platform, and
+      Apply rejects malformed URLs before saving. A Test Connection action now
+      probes the entered server's `ServiceConfig` endpoint with a bounded
+      timeout and reports success, HTTP errors, or network/TLS failures without
+      saving the value. Remaining: exercise that feedback on physical iOS and
+      desktop clients. Players can enter a LAN
+      IP/hostname or public DNS name and port (for example,
+      `https://192.168.1.217:9000/env/prod/contract/1`), validate/test the
+      connection, and account for iOS Local Network permission, platform
+      firewalls, and TLS certificates valid for the configured hostname/address.
 - [ ] Milestone: iPad joins a Mac-hosted match over the internet.
 
 ## Phase 6 — Cross-platform with Windows friends

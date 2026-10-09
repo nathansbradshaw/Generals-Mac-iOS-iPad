@@ -1,0 +1,117 @@
+name: Native platform replay tests
+# GeneralsX @build Codex 08/10/2026 Build actual native binaries and compare populated replay state.
+on:
+  push:
+    branches: [codex/native-replay-ci-20261008]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  replay:
+    name: ${{ matrix.platform }} replay baseline
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            runner: ubuntu-24.04
+          - platform: windows-x86
+            runner: windows-2022
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Download encrypted private input
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ASSET_API=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.tag_name == "codex-native-replay-inputs-20261008") | .assets[] | select(.name == "native-replay-inputs.enc") | .url')
+          test -n "$ASSET_API"
+          gh api "$ASSET_API" -H 'Accept: application/octet-stream' > native-replay-inputs.enc
+          echo '856a5771377d272238a6275a03e6e94af26a10a0e9ab5af0b4b8f0d1168f4704  native-replay-inputs.enc' | sha256sum --check
+      - name: Decrypt input
+        shell: bash
+        env:
+          REPLAY_BUNDLE_KEY: ${{ secrets.GENERALSX_REPLAY_BUNDLE_KEY_20261008 }}
+        run: |
+          set -euo pipefail
+          test -n "$REPLAY_BUNDLE_KEY"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in native-replay-inputs.enc -out native-replay-inputs.tar.gz -pass env:REPLAY_BUNDLE_KEY
+          mkdir inputs
+          tar -xzf native-replay-inputs.tar.gz -C inputs
+      - name: Set up Windows compiler
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x86
+      - name: Configure Windows replay baseline
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: inputs/source
+        run: |
+          cmake --preset win32 -DSAGE_USE_DX8=ON -DSAGE_GENERALS_ONLINE=OFF -DSAGE_UPDATE_CHECK=OFF -DRTS_BUILD_GENERALS=OFF -DRTS_BUILD_CORE_TOOLS=OFF -DRTS_BUILD_ZEROHOUR_TOOLS=OFF -DRTS_BUILD_OPTION_SAGE_PATCH=OFF -DRTS_BUILD_OPTION_DEBUG=OFF -DRTS_CRASHDUMP_ENABLE=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build Windows executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: inputs/source
+        run: |
+          cmake --build build/win32 --config Release --target z_generals -j 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run Windows replay and compare state
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $binary = (Resolve-Path 'inputs/source/build/win32/GeneralsMD/Release/generalszh.exe').Path
+          python inputs/source/scripts/qa/replay/run-platform-replay.py --executable $binary --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential cmake ninja-build git curl zip unzip tar pkg-config python3 python3-pip autoconf automake autoconf-archive libtool libltdl-dev libopenal-dev libasound2-dev libpulse-dev libaudio-dev libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev libpng-dev zlib1g-dev libfribidi-dev libjack-dev libsndio-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev libpipewire-0.3-dev libwayland-dev libdecor-0-dev liburing-dev libvulkan-dev mesa-vulkan-drivers
+          git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+      - name: Build Linux executable
+        if: runner.os == 'Linux'
+        shell: bash
+        working-directory: inputs/source
+        env:
+          VCPKG_MAX_CONCURRENCY: 4
+        run: |
+          set -euo pipefail
+          cmake --preset linux64-deploy -DSAGE_GENERALS_ONLINE=OFF -DSAGE_UPDATE_CHECK=OFF -DRTS_BUILD_GENERALS=OFF -DRTS_BUILD_CORE_TOOLS=OFF -DRTS_BUILD_ZEROHOUR_TOOLS=OFF -DRTS_BUILD_OPTION_SAGE_PATCH=OFF -DRTS_BUILD_OPTION_DEBUG=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          cmake --build build/linux64-deploy --target z_generals -j 4
+      - name: Run Linux replay and compare state
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/inputs/source/build/linux64-deploy:$GITHUB_WORKSPACE/inputs/source/build/linux64-deploy/_deps/dxvk-src/lib:$GITHUB_WORKSPACE/inputs/source/build/linux64-deploy/_deps/sdl3-build:$GITHUB_WORKSPACE/inputs/source/build/linux64-deploy/_deps/sdl3_image-build:$GITHUB_WORKSPACE/inputs/source/build/linux64-deploy/_deps/openal_soft-build"
+          python3 inputs/source/scripts/qa/replay/run-platform-replay.py --executable inputs/source/build/linux64-deploy/GeneralsMD/GeneralsXZH --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output
+      - name: Encrypt replay diagnostics
+        if: always()
+        shell: bash
+        env:
+          REPLAY_BUNDLE_KEY: ${{ secrets.GENERALSX_REPLAY_BUNDLE_KEY_20261008 }}
+        run: |
+          set -euo pipefail
+          if [ -d output ]; then
+            tar -czf diagnostics.tar.gz output
+            openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -in diagnostics.tar.gz -out diagnostics.enc -pass env:REPLAY_BUNDLE_KEY
+          fi
+      - name: Upload encrypted diagnostics
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: replay-diagnostics-${{ matrix.platform }}
+          path: diagnostics.enc
+          retention-days: 7
+          if-no-files-found: ignore

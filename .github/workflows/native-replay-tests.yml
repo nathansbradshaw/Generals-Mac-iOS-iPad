@@ -81,7 +81,10 @@ jobs:
           Copy-Item 'inputs/source/build/win32/_deps/bink-build/Release/binkw32.dll' 'inputs/assets/binkw32.dll'
           $binary = (Resolve-Path 'inputs/assets/generalszh.exe').Path
           dumpbin /dependents $binary
-          python inputs/source/scripts/qa/replay/run-platform-replay.py --executable $binary --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output
+          New-Item -ItemType Directory -Path output -Force | Out-Null
+          python scripts/qa/replay/transcode-replay-header.py inputs/fixture/crossplay.rep inputs/fixture/crossplay-windows-header16.rep --report output/header-conversion.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python inputs/source/scripts/qa/replay/run-platform-replay.py --executable $binary --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay-windows-header16.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'

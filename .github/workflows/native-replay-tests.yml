@@ -49,7 +49,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$SOURCE_OVERLAY" | openssl base64 -d -A > source-overlay.enc
-          echo 'f668d80e32d08312c093d865e6e7f8ff0b7e390ff6250df589dfe5c3db55b5fa  source-overlay.enc' | sha256sum --check
+          echo 'f13cb01050351e618f759b532ba3db83534532f1c91c76ad7e05fd82368eaf62  source-overlay.enc' | sha256sum --check
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in source-overlay.enc -out source-overlay.patch.gz -pass env:REPLAY_BUNDLE_KEY
           gzip -d source-overlay.patch.gz
           git apply --check --directory=inputs/source source-overlay.patch

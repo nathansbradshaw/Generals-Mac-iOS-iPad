@@ -1,4 +1,4 @@
-name: Native platform replay tests
+name: Native online client validation
 # GeneralsX @build Codex 08/10/2026 Build actual native binaries and compare populated replay state.
 on:
   push:
@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$SOURCE_OVERLAY" | openssl base64 -d -A > source-overlay.enc
-          echo 'e2e03eac86e28bc7df884ce819732dd77c1edd691948d1373a67a12702c2ca51  source-overlay.enc' | sha256sum --check
+          echo '03283969f5705a343f27be5b09962ed6dc863770317a8e90a0343c67f16b259e  source-overlay.enc' | sha256sum --check
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in source-overlay.enc -out source-overlay.patch.gz -pass env:REPLAY_BUNDLE_KEY
           gzip -d source-overlay.patch.gz
           git apply --check --directory=inputs/source source-overlay.patch
@@ -62,7 +62,7 @@ jobs:
         shell: pwsh
         working-directory: inputs/source
         run: |
-          cmake --preset win32 -DSAGE_USE_DX8=ON -DSAGE_GENERALS_ONLINE=OFF -DSAGE_UPDATE_CHECK=OFF -DRTS_BUILD_GENERALS=OFF -DRTS_BUILD_CORE_TOOLS=OFF -DRTS_BUILD_ZEROHOUR_TOOLS=OFF -DRTS_BUILD_OPTION_SAGE_PATCH=OFF -DRTS_BUILD_OPTION_DEBUG=OFF -DRTS_CRASHDUMP_ENABLE=OFF "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+          cmake --preset win32 "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x86-windows-static-md -DVCPKG_OVERLAY_PORTS=cmake/vcpkg-overlay-ports -DSAGE_USE_DX8=ON -DSAGE_GENERALS_ONLINE=ON -DSAGE_UPDATE_CHECK=OFF -DRTS_BUILD_GENERALS=OFF -DRTS_BUILD_CORE_TOOLS=OFF -DRTS_BUILD_ZEROHOUR_TOOLS=OFF -DRTS_BUILD_OPTION_SAGE_PATCH=OFF -DRTS_BUILD_OPTION_DEBUG=OFF -DRTS_CRASHDUMP_ENABLE=OFF "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build Windows executable
         if: runner.os == 'Windows'
@@ -110,7 +110,7 @@ jobs:
           VCPKG_MAX_CONCURRENCY: 4
         run: |
           set -euo pipefail
-          cmake --preset linux64-deploy -DSAGE_GENERALS_ONLINE=OFF -DSAGE_UPDATE_CHECK=OFF -DRTS_BUILD_GENERALS=OFF -DRTS_BUILD_CORE_TOOLS=OFF -DRTS_BUILD_ZEROHOUR_TOOLS=OFF -DRTS_BUILD_OPTION_SAGE_PATCH=OFF -DRTS_BUILD_OPTION_DEBUG=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          cmake --preset linux64-deploy -DSAGE_GENERALS_ONLINE=ON -DSAGE_UPDATE_CHECK=OFF -DRTS_BUILD_GENERALS=OFF -DRTS_BUILD_CORE_TOOLS=OFF -DRTS_BUILD_ZEROHOUR_TOOLS=OFF -DRTS_BUILD_OPTION_SAGE_PATCH=OFF -DRTS_BUILD_OPTION_DEBUG=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           cmake --build build/linux64-deploy --target z_generals -j 4
       - name: Run Linux replay and compare state
         if: runner.os == 'Linux'
@@ -124,6 +124,18 @@ jobs:
           python3 scripts/qa/replay/transcode-replay-header.py inputs/fixture/crossplay.rep inputs/fixture/crossplay-windows-header16.rep --report output/header-conversion.json
           python3 inputs/source/scripts/qa/replay/run-platform-replay.py --executable inputs/source/build/linux64-deploy/GeneralsMD/GeneralsXZH --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output/raw
           python3 inputs/source/scripts/qa/replay/run-platform-replay.py --executable inputs/source/build/linux64-deploy/GeneralsMD/GeneralsXZH --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay-windows-header16.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output/utf16
+      - name: Package online test client
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p client
+          if [ '${{ runner.os }}' = Windows ]; then
+            cp inputs/assets/generalszh.exe inputs/assets/mss32.dll inputs/assets/binkw32.dll client/
+          else
+            cp inputs/source/build/linux64-deploy/GeneralsMD/GeneralsXZH client/
+            find inputs/source/build/linux64-deploy/_deps -type f -name '*.so*' -exec cp {} client/ \;
+          fi
+          tar -czf output/online-client.tar.gz client
       - name: Encrypt replay diagnostics
         if: always()
         shell: bash

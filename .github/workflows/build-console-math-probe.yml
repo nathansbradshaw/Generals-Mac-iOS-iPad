@@ -41,7 +41,7 @@ jobs:
       - name: Compile generic console probe without captured inputs
         shell: pwsh
         run: |
-          $compiler = @('/nologo','/std:c++20','/EHsc','/MD','/O2','/fp:precise','/DNDEBUG','/DRTS_RELEASE','/FIUtility/CppMacros.h','/Iinputs/source/Dependencies/Utility','/Iinputs/source/Core/Libraries/Include','/Iinputs/source/Core/Libraries/Source/WWVegas','/Iinputs/source/Core/Libraries/Source/WWVegas/WWDebug','/Iinputs/source/Core/Libraries/Source/WWVegas/WWLib','/Iinputs/source/Core/Libraries/Source/WWVegas/WWMath','scripts/qa/math/trig-matrix-probe.cpp','/Fe:output/probe.exe','/Fo:output/probe.obj')
+          $compiler = @('/nologo','/std:c++20','/Zc:__cplusplus','/EHsc','/MD','/O2','/fp:precise','/DNDEBUG','/DRTS_RELEASE','/FIUtility/CppMacros.h','/Iinputs/source/Dependencies/Utility','/Iinputs/source/Core/Libraries/Include','/Iinputs/source/Core/Libraries/Source/WWVegas','/Iinputs/source/Core/Libraries/Source/WWVegas/WWDebug','/Iinputs/source/Core/Libraries/Source/WWVegas/WWLib','/Iinputs/source/Core/Libraries/Source/WWVegas/WWMath','scripts/qa/math/trig-matrix-probe.cpp','/Fe:output/probe.exe','/Fo:output/probe.obj')
           & cl @compiler *> output/compile.log
           if ($LASTEXITCODE -ne 0) { Write-Error 'Console compile failed; diagnostics are encrypted.'; exit $LASTEXITCODE }
           cmd /c 'output\probe.exe --topple < NUL > output\empty-input.log'

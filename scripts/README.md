@@ -275,3 +275,7 @@ docker rmi generalsx/linux-builder:latest generalsx/mingw-builder:latest
 - **Phase 1 Details**: See [docs/WORKDIR/phases/PHASE01_IMPLEMENTATION_PLAN.md](../docs/WORKDIR/phases/PHASE01_IMPLEMENTATION_PLAN.md)
 - **Docker Workflow**: See [docs/WORKDIR/support/DOCKER_WORKFLOW.md](../docs/WORKDIR/support/DOCKER_WORKFLOW.md)
 - **Instructions**: See [.github/instructions/scripts.instructions.md](../.github/instructions/scripts.instructions.md)
+
+### Console math probe
+
+qa/math/trig-matrix-probe.cpp reads hexadecimal floats from stdin and calls the production Matrix3D and WWMath headers. The targeted Windows CI job builds its MSVC x86 executable from the previously authorized encrypted source and encrypts the resulting binary and diagnostics. Captured inputs stay local; running that binary through CrossOver is separate from proof on an actual Windows OS. Math-only commits skip the full native game build.

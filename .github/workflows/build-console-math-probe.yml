@@ -1,0 +1,68 @@
+name: Build native Windows console math probe
+# GeneralsX @build Codex 09/10/2026 Keep captured game-state inputs local while compiling with native MSVC.
+on:
+  push:
+    branches: [codex/native-replay-ci-20261008]
+    paths: [.github/workflows/build-console-math-probe.yml, scripts/qa/math/trig-matrix-probe.cpp]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Recover previously authorized private source
+        shell: bash
+        env:
+          REPLAY_INPUT_URL: ${{ secrets.GENERALSX_REPLAY_INPUT_URL_20261008 }}
+          REPLAY_BUNDLE_KEY: ${{ secrets.GENERALSX_REPLAY_BUNDLE_KEY_20261008 }}
+          SOURCE_OVERLAY: ${{ secrets.GENERALSX_REPLAY_SOURCE_OVERLAY_20261008 }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location "$REPLAY_INPUT_URL" --output inputs.enc
+          echo '856a5771377d272238a6275a03e6e94af26a10a0e9ab5af0b4b8f0d1168f4704  inputs.enc' | sha256sum --check
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in inputs.enc -out inputs.tar.gz -pass env:REPLAY_BUNDLE_KEY
+          mkdir inputs output
+          tar -xzf inputs.tar.gz -C inputs --wildcards 'source/*'
+          printf '%s' "$SOURCE_OVERLAY" | openssl base64 -d -A > overlay.enc
+          echo 'f668d80e32d08312c093d865e6e7f8ff0b7e390ff6250df589dfe5c3db55b5fa  overlay.enc' | sha256sum --check
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in overlay.enc -out overlay.patch.gz -pass env:REPLAY_BUNDLE_KEY
+          gzip -d overlay.patch.gz
+          git apply --check --directory=inputs/source overlay.patch
+          git apply --directory=inputs/source overlay.patch
+      - name: Set up native x86 MSVC
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x86
+      - name: Compile generic console probe without captured inputs
+        shell: pwsh
+        run: |
+          $compiler = @('/nologo','/std:c++20','/EHsc','/MD','/O2','/fp:precise','/DNDEBUG','/DRTS_RELEASE','/FIUtility/CppMacros.h','/Iinputs/source/Dependencies/Utility','/Iinputs/source/Core/Libraries/Include','/Iinputs/source/Core/Libraries/Source/WWVegas','/Iinputs/source/Core/Libraries/Source/WWVegas/WWDebug','/Iinputs/source/Core/Libraries/Source/WWVegas/WWLib','/Iinputs/source/Core/Libraries/Source/WWVegas/WWMath','scripts/qa/math/trig-matrix-probe.cpp','/Fe:output/probe.exe','/Fo:output/probe.obj')
+          & cl @compiler *> output/compile.log
+          if ($LASTEXITCODE -ne 0) { Write-Error 'Console compile failed; diagnostics are encrypted.'; exit $LASTEXITCODE }
+          cmd /c 'output\probe.exe --topple < NUL > output\empty-input.log'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dumpbin /dependents output/probe.exe > output/dependents.txt
+          (Get-FileHash output/probe.exe -Algorithm SHA256).Hash | Set-Content output/sha256.txt
+          Write-Output 'Generic native Windows console probe built; no captured inputs were sent or tested.'
+      - name: Encrypt binary and diagnostics
+        if: always()
+        shell: bash
+        env:
+          REPLAY_BUNDLE_KEY: ${{ secrets.GENERALSX_REPLAY_BUNDLE_KEY_20261008 }}
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          tar -czf output.tar.gz output
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in output.tar.gz -out windows-console-math-probe.enc -pass env:REPLAY_BUNDLE_KEY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: windows-console-math-probe-encrypted
+          path: windows-console-math-probe.enc
+          if-no-files-found: error
+          retention-days: 7

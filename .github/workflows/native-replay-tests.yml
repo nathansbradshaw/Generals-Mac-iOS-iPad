@@ -141,12 +141,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p client
           if [ '${{ runner.os }}' = Windows ]; then
+            mkdir -p client
             cp inputs/assets/generalszh.exe inputs/assets/mss32.dll inputs/assets/binkw32.dll client/
+            # Use the maintained Git for Windows certificate bundle for the OpenSSL client.
+            test -s /mingw64/etc/ssl/certs/ca-bundle.crt
+            openssl x509 -in /mingw64/etc/ssl/certs/ca-bundle.crt -noout
+            cp /mingw64/etc/ssl/certs/ca-bundle.crt client/cacert.pem
           else
-            cp inputs/source/build/linux64-deploy/GeneralsMD/GeneralsXZH client/
-            find inputs/source/build/linux64-deploy/_deps \( -type f -o -type l \) -name '*.so*' -exec cp -L {} client/ \;
+            python3 scripts/qa/replay/package-linux-client.py --build inputs/source/build/linux64-deploy --output client
           fi
           tar -czf output/online-client.tar.gz client
       - name: Encrypt replay diagnostics

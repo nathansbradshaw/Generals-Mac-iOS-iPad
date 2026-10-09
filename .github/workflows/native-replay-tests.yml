@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         # Windows-only build repairs can keep the independent Linux baseline running.
-        include: ${{ fromJSON(contains(github.event.head_commit.message, '[windows-only]') && '[{"platform":"windows-x86","runner":"windows-2022"}]' || '[{"platform":"linux-x86_64","runner":"ubuntu-24.04"},{"platform":"windows-x86","runner":"windows-2022"}]') }}
+        include: ${{ fromJSON(contains(github.event.head_commit.message, '[windows-only]') && '[{"platform":"windows-x86","runner":"windows-2022"}]' || contains(github.event.head_commit.message, '[linux-only]') && '[{"platform":"linux-x86_64","runner":"ubuntu-24.04"}]' || '[{"platform":"linux-x86_64","runner":"ubuntu-24.04"},{"platform":"windows-x86","runner":"windows-2022"}]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$SOURCE_OVERLAY" | openssl base64 -d -A > source-overlay.enc
-          echo '03283969f5705a343f27be5b09962ed6dc863770317a8e90a0343c67f16b259e  source-overlay.enc' | sha256sum --check
+          echo '230c47d25ede1c77a6da2ec0f833fa2d0521f82321245564d0bee0e24cc52b57  source-overlay.enc' | sha256sum --check
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in source-overlay.enc -out source-overlay.patch.gz -pass env:REPLAY_BUNDLE_KEY
           gzip -d source-overlay.patch.gz
           git apply --check --directory=inputs/source source-overlay.patch
@@ -133,7 +133,7 @@ jobs:
             cp inputs/assets/generalszh.exe inputs/assets/mss32.dll inputs/assets/binkw32.dll client/
           else
             cp inputs/source/build/linux64-deploy/GeneralsMD/GeneralsXZH client/
-            find inputs/source/build/linux64-deploy/_deps -type f -name '*.so*' -exec cp {} client/ \;
+            find inputs/source/build/linux64-deploy/_deps \( -type f -o -type l \) -name '*.so*' -exec cp -L {} client/ \;
           fi
           tar -czf output/online-client.tar.gz client
       - name: Encrypt replay diagnostics

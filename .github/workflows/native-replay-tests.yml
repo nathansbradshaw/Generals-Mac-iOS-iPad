@@ -47,8 +47,10 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$SOURCE_OVERLAY" | openssl base64 -d -A > source-overlay.enc
-          echo '18d93ad161241651c1400b8b856642c34e7933160b66a2c5a50c88776b154aca  source-overlay.enc' | sha256sum --check
+          echo 'ddb2fcff7b29cfcb42f830c52ee805135e83ed19fc2b91622466a1ce906d0688  source-overlay.enc' | sha256sum --check
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in source-overlay.enc -out source-overlay.tar.gz -pass env:REPLAY_BUNDLE_KEY
+          # The old Linux-only shim otherwise shadows the Windows SDK header.
+          rm inputs/source/Core/Libraries/Source/WWVegas/WWAudio/mmsystem.h
           tar -xzf source-overlay.tar.gz -C inputs/source
       - name: Set up Windows compiler
         if: runner.os == 'Windows'

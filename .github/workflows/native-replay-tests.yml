@@ -29,9 +29,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          ASSET_API=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.tag_name == "codex-native-replay-inputs-20261008") | .assets[] | select(.name == "native-replay-inputs.enc") | .url')
-          test -n "$ASSET_API"
-          gh api "$ASSET_API" -H 'Accept: application/octet-stream' > native-replay-inputs.enc
+          gh api "repos/$GITHUB_REPOSITORY/releases/assets/623806545" -H 'Accept: application/octet-stream' > native-replay-inputs.enc
           echo '856a5771377d272238a6275a03e6e94af26a10a0e9ab5af0b4b8f0d1168f4704  native-replay-inputs.enc' | sha256sum --check
       - name: Decrypt input
         shell: bash

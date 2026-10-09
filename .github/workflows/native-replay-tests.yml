@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$SOURCE_OVERLAY" | openssl base64 -d -A > source-overlay.enc
-          echo '295691e4e748100e383518ea889c0f03edf52cb9d1d4c88a28977935781c64fd  source-overlay.enc' | sha256sum --check
+          echo 'fd6665557a19787876e204df77bd0b28157e8f8d33e89e8a398b8453f87c4b25  source-overlay.enc' | sha256sum --check
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in source-overlay.enc -out source-overlay.patch.gz -pass env:REPLAY_BUNDLE_KEY
           gzip -d source-overlay.patch.gz
           git apply --check --directory=inputs/source source-overlay.patch
@@ -75,7 +75,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $binary = (Resolve-Path 'inputs/source/build/win32/GeneralsMD/Release/generalszh.exe').Path
+          # WinMain selects the executable directory; stage it beside the complete data.
+          Copy-Item 'inputs/source/build/win32/GeneralsMD/Release/generalszh.exe' 'inputs/assets/generalszh.exe'
+          Copy-Item 'inputs/source/build/win32/_deps/miles-build/Release/mss32.dll' 'inputs/assets/mss32.dll'
+          Copy-Item 'inputs/source/build/win32/_deps/bink-build/Release/binkw32.dll' 'inputs/assets/binkw32.dll'
+          $binary = (Resolve-Path 'inputs/assets/generalszh.exe').Path
+          dumpbin /dependents $binary
           python inputs/source/scripts/qa/replay/run-platform-replay.py --executable $binary --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install Linux build dependencies

@@ -47,11 +47,11 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$SOURCE_OVERLAY" | openssl base64 -d -A > source-overlay.enc
-          echo 'ddb2fcff7b29cfcb42f830c52ee805135e83ed19fc2b91622466a1ce906d0688  source-overlay.enc' | sha256sum --check
-          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in source-overlay.enc -out source-overlay.tar.gz -pass env:REPLAY_BUNDLE_KEY
-          # The old Linux-only shim otherwise shadows the Windows SDK header.
-          rm inputs/source/Core/Libraries/Source/WWVegas/WWAudio/mmsystem.h
-          tar -xzf source-overlay.tar.gz -C inputs/source
+          echo 'b7272249debf4bf441108a7854e7aa19dbdeab3c27a1962340be04da87b7bee8  source-overlay.enc' | sha256sum --check
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in source-overlay.enc -out source-overlay.patch.gz -pass env:REPLAY_BUNDLE_KEY
+          gzip -d source-overlay.patch.gz
+          git apply --check --directory=inputs/source source-overlay.patch
+          git apply --directory=inputs/source source-overlay.patch
       - name: Set up Windows compiler
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
@@ -69,7 +69,7 @@ jobs:
         shell: pwsh
         working-directory: inputs/source
         run: |
-          cmake --build build/win32 --config Release --target z_generals -j 4
+          cmake --build build/win32 --config Release --target z_generals -j 4 -- -k 0
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run Windows replay and compare state
         if: runner.os == 'Windows'

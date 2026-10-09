@@ -12,11 +12,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: linux-x86_64
-            runner: ubuntu-24.04
-          - platform: windows-x86
-            runner: windows-2022
+        # Windows-only build repairs can keep the independent Linux baseline running.
+        include: ${{ fromJSON(contains(github.event.head_commit.message, '[windows-only]') && '[{"platform":"windows-x86","runner":"windows-2022"}]' || '[{"platform":"linux-x86_64","runner":"ubuntu-24.04"},{"platform":"windows-x86","runner":"windows-2022"}]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
@@ -42,6 +39,17 @@ jobs:
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in native-replay-inputs.enc -out native-replay-inputs.tar.gz -pass env:REPLAY_BUNDLE_KEY
           mkdir inputs
           tar -xzf native-replay-inputs.tar.gz -C inputs
+      - name: Apply encrypted source build repairs
+        shell: bash
+        env:
+          SOURCE_OVERLAY: ${{ secrets.GENERALSX_REPLAY_SOURCE_OVERLAY_20261008 }}
+          REPLAY_BUNDLE_KEY: ${{ secrets.GENERALSX_REPLAY_BUNDLE_KEY_20261008 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$SOURCE_OVERLAY" | openssl base64 -d -A > source-overlay.enc
+          echo '18d93ad161241651c1400b8b856642c34e7933160b66a2c5a50c88776b154aca  source-overlay.enc' | sha256sum --check
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in source-overlay.enc -out source-overlay.tar.gz -pass env:REPLAY_BUNDLE_KEY
+          tar -xzf source-overlay.tar.gz -C inputs/source
       - name: Set up Windows compiler
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756

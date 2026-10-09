@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$SOURCE_OVERLAY" | openssl base64 -d -A > source-overlay.enc
-          echo '1bcf0ed736cc86c752bb921276998c9075ec948f2855da58edbbe20fc3c99317  source-overlay.enc' | sha256sum --check
+          echo 'bd692d8acb69c5cf29194911b0c04ea0e021ce254e65cecdbee6c68165c1ff6c  source-overlay.enc' | sha256sum --check
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in source-overlay.enc -out source-overlay.patch.gz -pass env:REPLAY_BUNDLE_KEY
           gzip -d source-overlay.patch.gz
           git apply --check --directory=inputs/source source-overlay.patch
@@ -82,9 +82,15 @@ jobs:
           $binary = (Resolve-Path 'inputs/assets/generalszh.exe').Path
           dumpbin /dependents $binary
           New-Item -ItemType Directory -Path output -Force | Out-Null
+          cl /nologo /std:c++20 /EHsc /W4 /WX /Iinputs/source/Core/Libraries/Include inputs/source/scripts/qa/replay/replay-text-codec-test.cpp /Fe:replay-text-codec-test.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./replay-text-codec-test.exe | Tee-Object -FilePath output/codec-test.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/qa/replay/transcode-replay-header.py inputs/fixture/crossplay.rep inputs/fixture/crossplay-windows-header16.rep --report output/header-conversion.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python inputs/source/scripts/qa/replay/run-platform-replay.py --executable $binary --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay-windows-header16.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output
+          python inputs/source/scripts/qa/replay/run-platform-replay.py --executable $binary --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output/raw
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python inputs/source/scripts/qa/replay/run-platform-replay.py --executable $binary --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay-windows-header16.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output/utf16
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
@@ -112,7 +118,12 @@ jobs:
         run: |
           set -euo pipefail
           export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/inputs/source/build/linux64-deploy:$GITHUB_WORKSPACE/inputs/source/build/linux64-deploy/_deps/dxvk-src/lib:$GITHUB_WORKSPACE/inputs/source/build/linux64-deploy/_deps/sdl3-build:$GITHUB_WORKSPACE/inputs/source/build/linux64-deploy/_deps/sdl3_image-build:$GITHUB_WORKSPACE/inputs/source/build/linux64-deploy/_deps/openal_soft-build"
-          python3 inputs/source/scripts/qa/replay/run-platform-replay.py --executable inputs/source/build/linux64-deploy/GeneralsMD/GeneralsXZH --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output
+          mkdir -p output
+          g++ -std=c++20 -Wall -Wextra -Werror -Iinputs/source/Core/Libraries/Include inputs/source/scripts/qa/replay/replay-text-codec-test.cpp -o replay-text-codec-test
+          ./replay-text-codec-test | tee output/codec-test.log
+          python3 scripts/qa/replay/transcode-replay-header.py inputs/fixture/crossplay.rep inputs/fixture/crossplay-windows-header16.rep --report output/header-conversion.json
+          python3 inputs/source/scripts/qa/replay/run-platform-replay.py --executable inputs/source/build/linux64-deploy/GeneralsMD/GeneralsXZH --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output/raw
+          python3 inputs/source/scripts/qa/replay/run-platform-replay.py --executable inputs/source/build/linux64-deploy/GeneralsMD/GeneralsXZH --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay-windows-header16.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output/utf16
       - name: Encrypt replay diagnostics
         if: always()
         shell: bash

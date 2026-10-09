@@ -5,6 +5,40 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <fenv.h>
+#include <float.h>
+#if defined(__SSE__) || defined(__x86_64__)
+#include <xmmintrin.h>
+#endif
+
+// GeneralsX @build Codex 09/10/2026 Optional control reproduces GameLogic's production floating-point setup.
+static void ConfigureGameFPU()
+{
+#ifdef _WIN32
+    _fpreset();
+    unsigned int value = _statusfp();
+    value = (value & ~_MCW_RC) | (_RC_NEAR & _MCW_RC);
+    value = (value & ~_MCW_PC) | (_PC_24 & _MCW_PC);
+    _controlfp(value, _MCW_PC | _MCW_RC);
+    unsigned int control;
+    _controlfp_s(&control, _MCW_EM, _MCW_EM);
+#else
+    fesetenv(FE_DFL_ENV);
+    feclearexcept(FE_ALL_EXCEPT);
+    fesetround(FE_TONEAREST);
+#if defined(__i386__) || defined(__x86_64__)
+    unsigned short control = 0;
+    __asm__ __volatile__("fnstcw %0" : "=m" (control));
+    control = static_cast<unsigned short>(control & ~0x0F00u);
+    __asm__ __volatile__("fldcw %0" : : "m" (control));
+#endif
+#if defined(__SSE__) || defined(__x86_64__)
+    unsigned int controlSSE = static_cast<unsigned int>(_mm_getcsr());
+    controlSSE = (controlSSE & ~static_cast<unsigned int>(_MM_ROUND_MASK)) | static_cast<unsigned int>(_MM_ROUND_NEAREST);
+    _mm_setcsr(controlSSE);
+#endif
+#endif
+}
 
 static float FromBits(uint32_t bits)
 {
@@ -25,7 +59,16 @@ int main(int argc, char** argv)
     // One line: 12 row-major matrix floats, Z/X/Y rotation angles, direction X/Y.
     // All input and output values are raw IEEE-754 hexadecimal bits.
     uint32_t bits[17];
-    const bool topple = argc == 2 && std::strcmp(argv[1], "--topple") == 0;
+    bool topple = false;
+    for (int i = 1; i < argc; ++i)
+    {
+        if (std::strcmp(argv[i], "--topple") == 0)
+            topple = true;
+        else if (std::strcmp(argv[i], "--game-fpu") == 0)
+            ConfigureGameFPU();
+        else
+            return 3;
+    }
     while (std::scanf("%x", &bits[0]) == 1)
     {
         for (int i = 1; i < 17; ++i)

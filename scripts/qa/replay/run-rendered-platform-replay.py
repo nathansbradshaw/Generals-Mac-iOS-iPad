@@ -63,7 +63,7 @@ def main():
     started = time.monotonic()
     timed_out = False
     score_screen_observed = False
-    score_screen_dismissed = False
+    score_screen_input_sent = False
     score_screen_window = None
     score_screen_input_error = None
     if args.dismiss_replay_score and (not sys.platform.startswith('linux') or not env.get('DISPLAY')):
@@ -75,7 +75,7 @@ def main():
         )
         score_ready_at = None
         while process.poll() is None and time.monotonic() - started < args.timeout:
-            if args.dismiss_replay_score and not score_screen_dismissed and score_screen_input_error is None:
+            if args.dismiss_replay_score and not score_screen_input_sent and score_screen_input_error is None:
                 current_log = (args.output / 'replay.log').read_text(errors='replace')
                 marker = "Shell::doPush() called with layoutFile='Menus/ScoreScreen.wnd'"
                 score_log = current_log[current_log.rfind(marker):] if marker in current_log else ''
@@ -93,9 +93,13 @@ def main():
                             if windows.returncode == 0 and len(ids) == 1 and ids[0].isdigit():
                                 score_screen_window = ids[0]
                                 subprocess.run(['xdotool', 'windowfocus', '--sync', score_screen_window], env=env, check=True, timeout=5)
-                                subprocess.run(['xdotool', 'key', '--window', score_screen_window, 'Escape'], env=env, check=True, timeout=5)
-                                score_screen_dismissed = True
-                        except (OSError, subprocess.SubprocessError) as error:
+                                focused = subprocess.check_output(['xdotool', 'getwindowfocus'], env=env, text=True, timeout=5).strip()
+                                if focused != score_screen_window:
+                                    raise RuntimeError('The isolated test window did not receive focus')
+                                # XTEST updates keyboard state; --window uses synthetic XSendEvent instead.
+                                subprocess.run(['xdotool', 'key', '--clearmodifiers', 'Escape'], env=env, check=True, timeout=5)
+                                score_screen_input_sent = True
+                        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
                             score_screen_input_error = type(error).__name__
             time.sleep(0.5)
         if process.poll() is None:
@@ -126,13 +130,13 @@ def main():
     completion = exit_code == 0 and not timed_out
     passed = exit_code == 0 and completion and populated and mismatch is None and all(sample['match'] for sample in samples)
     if args.dismiss_replay_score:
-        passed = passed and score_screen_observed and score_screen_dismissed
+        passed = passed and score_screen_observed and score_screen_input_sent
     report = {
         'platform': sys.platform, 'rendered_game': True, 'virtual_display_only': True, 'visual_or_audio_approval': False, 'executable_sha256': digest(args.executable),
         'replay_sha256': digest(args.replay), 'exit_code': exit_code,
         'timed_out': timed_out, 'elapsed_seconds': round(time.monotonic() - started, 2),
         'completion_observed': completion, 'completion_basis': 'normal rendered ReplaySimulation exit after completed score-screen dismissal' if args.dismiss_replay_score else 'normal rendered ReplaySimulation executor exit', 'populated_world': populated,
-        'score_screen_observed': score_screen_observed, 'score_screen_dismissed': score_screen_dismissed, 'score_screen_window': score_screen_window, 'score_screen_input_error': score_screen_input_error,
+        'score_screen_observed': score_screen_observed, 'score_screen_input_sent': score_screen_input_sent, 'score_screen_window': score_screen_window, 'score_screen_input_error': score_screen_input_error,
         'matching_samples': sum(sample['match'] for sample in samples),
         'required_samples': len(expected), 'passed': passed,
         'crc_mismatch': mismatch.group(0) if mismatch else None,

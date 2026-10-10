@@ -104,6 +104,24 @@ def main():
         'crc_mismatch': mismatch.group(0) if mismatch else None,
         'first_difference': first_difference, 'samples': samples,
     }
+    # GeneralsX @test Codex 09/10/2026 Preserve a private native crash backtrace without changing the failed gate.
+    if sys.platform.startswith('linux') and exit_code is not None and exit_code < 0 and not timed_out:
+        diagnostic_env = env.copy()
+        diagnostic_env['GENERALSX_USER_DATA_DIR'] = str(args.output / 'diagnostic-profile')
+        diagnostic_env['XDG_DATA_HOME'] = str(args.output / 'diagnostic-userdata')
+        diagnostic_env['GENERALSX_CRC_TRACE'] = str(args.output / 'diagnostic-state')
+        diagnostic_env['VK_LOADER_DEBUG'] = 'error,warn'
+        with (args.output / 'gdb-backtrace.log').open('wb') as diagnostic_log:
+            try:
+                diagnostic = subprocess.run(
+                    ['gdb', '--batch', '-ex', 'set pagination off', '-ex', 'run', '-ex', 'thread apply all bt 16', '--args',
+                     str(args.executable), '-win', '-quickstart', '-nologo', '-noshellmap', '-replay', str(args.replay)],
+                    cwd=args.assets, env=diagnostic_env, stdout=diagnostic_log, stderr=subprocess.STDOUT,
+                    timeout=min(args.timeout, 120),
+                )
+                report['crash_diagnostic_returncode'] = diagnostic.returncode
+            except (FileNotFoundError, subprocess.TimeoutExpired) as error:
+                report['crash_diagnostic_error'] = type(error).__name__
     (args.output / 'result.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps({key: value for key, value in report.items() if key not in ('samples', 'first_difference')}, indent=2))
     if first_difference:

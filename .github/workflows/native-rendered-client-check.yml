@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb xauth libvulkan1 mesa-vulkan-drivers vulkan-tools libasound2t64 libpulse0 libx11-6 libxext6 libxrandr2 libxcursor1 libxi6 libxss1 libxkbcommon0 libwayland-client0 libdecor-0-0 libavcodec60 libavformat60 libavutil58 libswresample4 libswscale7 libpng16-16t64 libfreetype6 libfontconfig1 libfribidi0
+          sudo apt-get install -y -qq gdb xvfb xauth libvulkan1 mesa-vulkan-drivers vulkan-tools libasound2t64 libpulse0 libx11-6 libxext6 libxrandr2 libxcursor1 libxi6 libxss1 libxkbcommon0 libwayland-client0 libdecor-0-0 libavcodec60 libavformat60 libavutil58 libswresample4 libswscale7 libpng16-16t64 libfreetype6 libfontconfig1 libfribidi0
       - name: Require source validation success and download encrypted candidate
         shell: bash
         env:

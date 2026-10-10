@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq gdb xvfb xauth libvulkan1 mesa-vulkan-drivers vulkan-tools libasound2t64 libpulse0 libx11-6 libxext6 libxrandr2 libxcursor1 libxi6 libxss1 libxkbcommon0 libwayland-client0 libdecor-0-0 libavcodec60 libavformat60 libavutil58 libswresample4 libswscale7 libpng16-16t64 libfreetype6 libfontconfig1 libfribidi0
+          sudo apt-get install -y -qq gdb xvfb xauth xdotool libvulkan1 mesa-vulkan-drivers vulkan-tools libasound2t64 libpulse0 libx11-6 libxext6 libxrandr2 libxcursor1 libxi6 libxss1 libxkbcommon0 libwayland-client0 libdecor-0-0 libavcodec60 libavformat60 libavutil58 libswresample4 libswscale7 libpng16-16t64 libfreetype6 libfontconfig1 libfribidi0
       - name: Require source validation success and download encrypted candidate
         shell: bash
         env:
@@ -93,7 +93,7 @@ jobs:
           export VK_DRIVER_FILES="$driver" VK_ICD_FILENAMES="$driver" LP_NUM_THREADS=2
           ldd candidate/client/libdxvk_d3d8.so > output/dxvk-linked-libraries.txt
           xvfb-run -a --server-args='-screen 0 1024x768x24 -nolisten tcp' vulkaninfo --summary > output/vulkan-summary.log 2>&1
-          xvfb-run -a --server-args='-screen 0 1024x768x24 -nolisten tcp' python3 scripts/qa/replay/run-rendered-platform-replay.py --executable candidate/client/GeneralsXZH --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output/rendered --timeout 600
+          xvfb-run -a --server-args='-screen 0 1024x768x24 -nolisten tcp' python3 scripts/qa/replay/run-rendered-platform-replay.py --executable candidate/client/GeneralsXZH --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output/rendered --timeout 300 --dismiss-replay-score
       - name: Encrypt graphics diagnostics
         if: always()
         shell: bash

@@ -23,6 +23,7 @@ def main():
     parser.add_argument('--base-assets', type=Path)
     parser.add_argument('--archive-manifest', type=Path)
     parser.add_argument('--timeout', type=int, default=600)
+    parser.add_argument('--dismiss-replay-score', action='store_true', help='Dismiss the completed score screen only in an isolated Linux virtual display')
     args = parser.parse_args()
     for name in ('executable', 'assets', 'replay', 'expected', 'output'):
         setattr(args, name, getattr(args, name).resolve())
@@ -61,17 +62,47 @@ def main():
     env['SDL_AUDIODRIVER'] = 'dummy'
     started = time.monotonic()
     timed_out = False
+    score_screen_observed = False
+    score_screen_dismissed = False
+    score_screen_window = None
+    score_screen_input_error = None
+    if args.dismiss_replay_score and (not sys.platform.startswith('linux') or not env.get('DISPLAY')):
+        parser.error('Score-screen dismissal requires the isolated Linux virtual display')
     with (args.output / 'replay.log').open('wb') as log:
-        try:
-            result = subprocess.run(
-                [str(args.executable), '-win', '-quickstart', '-nologo', '-noshellmap', '-replay', str(args.replay)],
-                cwd=args.assets, env=env, stdout=log, stderr=subprocess.STDOUT,
-                timeout=args.timeout,
-            )
-            exit_code = result.returncode
-        except subprocess.TimeoutExpired:
-            exit_code = None
+        process = subprocess.Popen(
+            [str(args.executable), '-win', '-quickstart', '-nologo', '-noshellmap', '-replay', str(args.replay)],
+            cwd=args.assets, env=env, stdout=log, stderr=subprocess.STDOUT,
+        )
+        score_ready_at = None
+        while process.poll() is None and time.monotonic() - started < args.timeout:
+            if args.dismiss_replay_score and not score_screen_dismissed and score_screen_input_error is None:
+                current_log = (args.output / 'replay.log').read_text(errors='replace')
+                marker = "Shell::doPush() called with layoutFile='Menus/ScoreScreen.wnd'"
+                score_log = current_log[current_log.rfind(marker):] if marker in current_log else ''
+                score_screen_observed = bool(re.search(r'winCreateLayout returned: 0x[1-9a-fA-F][0-9a-fA-F]*', score_log) and 'Shell::doPush() completed successfully' in score_log)
+                exact = score_screen_observed and all((args.output / ref.name).is_file() and digest(args.output / ref.name) == digest(ref) for ref in expected)
+                if exact and 'REPLAY_CRC_MISMATCH' not in current_log:
+                    if score_ready_at is None:
+                        score_ready_at = time.monotonic()
+                    elif time.monotonic() - score_ready_at >= 2:
+                        # GeneralsX @test Codex 09/10/2026 ReplaySimulation waits for ScoreScreenInput's Escape/OK before returning.
+                        # Target only this test process's window after the score layout and all exact states exist.
+                        try:
+                            windows = subprocess.run(['xdotool', 'search', '--pid', str(process.pid)], env=env, capture_output=True, text=True, check=False, timeout=5)
+                            ids = windows.stdout.split()
+                            if windows.returncode == 0 and len(ids) == 1 and ids[0].isdigit():
+                                score_screen_window = ids[0]
+                                subprocess.run(['xdotool', 'windowfocus', '--sync', score_screen_window], env=env, check=True, timeout=5)
+                                subprocess.run(['xdotool', 'key', '--window', score_screen_window, 'Escape'], env=env, check=True, timeout=5)
+                                score_screen_dismissed = True
+                        except (OSError, subprocess.SubprocessError) as error:
+                            score_screen_input_error = type(error).__name__
+            time.sleep(0.5)
+        if process.poll() is None:
             timed_out = True
+            process.kill()
+        process.wait()
+        exit_code = None if timed_out else process.returncode
     log_text = (args.output / 'replay.log').read_text(errors='replace')
     samples = []
     first_difference = None
@@ -91,14 +122,17 @@ def main():
     mismatch = re.search(r'REPLAY_CRC_MISMATCH[^\r\n]*', log_text)
     populated = (args.output / 'state-000100.trace').is_file() and sum(line.startswith('LABEL ') for line in (args.output / 'state-000100.trace').read_text().splitlines()) >= 200
     # GeneralsX @test Codex 09/10/2026 The rendered ReplaySimulation branch emits no headless progress line.
-    # The isolated virtual display receives no external input; its normal replay executor exit is authoritative.
+    # The rendered game waits on the completed score screen; the optional fixture dismisses only that screen.
     completion = exit_code == 0 and not timed_out
     passed = exit_code == 0 and completion and populated and mismatch is None and all(sample['match'] for sample in samples)
+    if args.dismiss_replay_score:
+        passed = passed and score_screen_observed and score_screen_dismissed
     report = {
         'platform': sys.platform, 'rendered_game': True, 'virtual_display_only': True, 'visual_or_audio_approval': False, 'executable_sha256': digest(args.executable),
         'replay_sha256': digest(args.replay), 'exit_code': exit_code,
         'timed_out': timed_out, 'elapsed_seconds': round(time.monotonic() - started, 2),
-        'completion_observed': completion, 'completion_basis': 'normal isolated rendered ReplaySimulation executor exit; same binary and recording passed full native headless validation', 'populated_world': populated,
+        'completion_observed': completion, 'completion_basis': 'normal rendered ReplaySimulation exit after completed score-screen dismissal' if args.dismiss_replay_score else 'normal rendered ReplaySimulation executor exit', 'populated_world': populated,
+        'score_screen_observed': score_screen_observed, 'score_screen_dismissed': score_screen_dismissed, 'score_screen_window': score_screen_window, 'score_screen_input_error': score_screen_input_error,
         'matching_samples': sum(sample['match'] for sample in samples),
         'required_samples': len(expected), 'passed': passed,
         'crc_mismatch': mismatch.group(0) if mismatch else None,

@@ -1,0 +1,109 @@
+name: Native Linux rendered client replay
+# GeneralsX @build Codex 09/10/2026 Reuse an encrypted validated client for native virtual-display graphics QA.
+on:
+  push:
+    branches: [codex/native-replay-ci-20261008]
+    paths: [.github/workflows/native-rendered-client-check.yml, scripts/qa/replay/run-rendered-platform-replay.py]
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Successful native Linux replay run to validate
+        required: true
+        default: '38009154289'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  rendered:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[render-only]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      SOURCE_RUN_ID: ${{ inputs.source_run_id || '38009154289' }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Recover same authorized encrypted replay assets
+        shell: bash
+        env:
+          REPLAY_INPUT_URL: ${{ secrets.GENERALSX_REPLAY_INPUT_URL_20261008 }}
+          REPLAY_BUNDLE_KEY: ${{ secrets.GENERALSX_REPLAY_BUNDLE_KEY_20261008 }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location "$REPLAY_INPUT_URL" --output inputs.enc
+          echo '856a5771377d272238a6275a03e6e94af26a10a0e9ab5af0b4b8f0d1168f4704  inputs.enc' | sha256sum --check
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in inputs.enc -out inputs.tar.gz -pass env:REPLAY_BUNDLE_KEY
+          mkdir inputs
+          tar -xzf inputs.tar.gz -C inputs --wildcards 'assets/*' 'base-assets/*' 'fixture/*'
+      - name: Install native virtual-display runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xauth libvulkan1 mesa-vulkan-drivers vulkan-tools libasound2t64 libpulse0 libx11-6 libxext6 libxrandr2 libxcursor1 libxi6 libxss1 libxkbcommon0 libwayland-client0 libdecor-0-0 libavcodec60 libavformat60 libavutil58 libswresample4 libswscale7 libpng16-16t64 libfreetype6 libfontconfig1 libfribidi0
+      - name: Require source validation success and download encrypted candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPLAY_BUNDLE_KEY: ${{ secrets.GENERALSX_REPLAY_BUNDLE_KEY_20261008 }}
+        run: |
+          set -euo pipefail
+          python3 - <<'WAIT'
+          import json,os,subprocess,time
+          run=os.environ['SOURCE_RUN_ID'];repo=os.environ['GITHUB_REPOSITORY']
+          for attempt in range(60):
+              result=json.loads(subprocess.check_output(['gh','run','view',run,'--repo',repo,'--json','status,conclusion'],text=True))
+              if result['status']=='completed':
+                  assert result['conclusion']=='success', 'Source validation did not pass'
+                  break
+              if attempt%2==0: print('Waiting for native source validation to complete',flush=True)
+              time.sleep(30)
+          else: raise RuntimeError('Source validation wait timed out')
+          WAIT
+          gh run download "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" --name replay-diagnostics-linux-x86_64 --dir encrypted-client
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in encrypted-client/diagnostics.enc -out client-diagnostics.tar.gz -pass env:REPLAY_BUNDLE_KEY
+          mkdir candidate
+          tar -xzf client-diagnostics.tar.gz -C candidate
+          tar -xzf candidate/output/online-client.tar.gz -C candidate
+          python3 - <<'AUDIT'
+          from pathlib import Path
+          import hashlib,json,struct
+          root=Path('candidate');binary=root/'client/GeneralsXZH';data=binary.read_bytes()
+          assert data[:4]==b'\x7fELF' and struct.unpack_from('<H',data,18)[0]==62
+          sha=hashlib.sha256(data).hexdigest()
+          for case in ['raw','utf16']:
+              r=json.loads((root/'output'/case/'result.json').read_text())
+              assert r['passed'] and r['completion_observed'] and r['populated_world']
+              assert r['exit_code']==0 and r['executable_sha256']==sha and r['matching_samples']==r['required_samples']==22
+              for ref in Path('inputs/fixture/expected').glob('state-*.trace'):
+                  assert ref.read_bytes()==(root/'output'/case/ref.name).read_bytes()
+          print('Validated native ELF62 and both exact source replay cases before graphics QA')
+          AUDIT
+      - name: Run actual native Linux renderer and populated replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/candidate/client"
+          mkdir output
+          cp candidate/client/cacert.pem inputs/assets/cacert.pem
+          xvfb-run -a --server-args='-screen 0 1024x768x24 -nolisten tcp' python3 scripts/qa/replay/run-rendered-platform-replay.py --executable candidate/client/GeneralsXZH --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output/rendered --timeout 600
+      - name: Encrypt graphics diagnostics
+        if: always()
+        shell: bash
+        env:
+          REPLAY_BUNDLE_KEY: ${{ secrets.GENERALSX_REPLAY_BUNDLE_KEY_20261008 }}
+        run: |
+          set -euo pipefail
+          if [ -d output ]; then
+            tar -czf graphics-diagnostics.tar.gz output
+            openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -in graphics-diagnostics.tar.gz -out graphics-diagnostics.enc -pass env:REPLAY_BUNDLE_KEY
+          fi
+      - name: Upload encrypted graphics diagnostics
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: rendered-diagnostics-linux-x86_64
+          path: graphics-diagnostics.enc
+          retention-days: 7
+          if-no-files-found: ignore

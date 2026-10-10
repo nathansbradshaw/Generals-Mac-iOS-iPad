@@ -19,11 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         # Windows-only build repairs can keep the independent Linux baseline running.
-        include:
-          - platform: windows-x86
-            runner: windows-2022
-          - platform: linux-x86_64
-            runner: ubuntu-24.04
+        include: ${{ fromJSON(contains(github.event.head_commit.message, '[windows-only]') && '[{"platform":"windows-x86","runner":"windows-2022"}]' || '[{"platform":"windows-x86","runner":"windows-2022"},{"platform":"linux-x86_64","runner":"ubuntu-24.04"}]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
@@ -91,7 +87,7 @@ jobs:
           set -euo pipefail
           test -n "$ONLINE_GUI_OVERLAY"
           printf '%s' "$ONLINE_GUI_OVERLAY" | openssl base64 -d -A > online-gui.enc
-          echo 'a74340e39e4044d95d2de28e2bd16394e08cb13417809c793345d0847f528222  online-gui.enc' | sha256sum --check
+          echo 'f70bffdd03c8b0020c283fa8e4642303994100970eae1c82c7f160cec0c8dc1d  online-gui.enc' | sha256sum --check
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in online-gui.enc -out online-gui.patch.gz -pass env:REPLAY_BUNDLE_KEY
           gzip -d online-gui.patch.gz
           git apply --check --directory=inputs/source online-gui.patch

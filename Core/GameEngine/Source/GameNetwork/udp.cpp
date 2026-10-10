@@ -206,8 +206,7 @@ Int UDP::Bind(UnsignedInt IP,UnsignedShort Port)
     return(status);
   }
 
-// GeneralsX @bugfix BenderAI 13/02/2026 Use socklen_t for POSIX socket functions (fighter19 pattern)
-UdpSocketLength namelen=sizeof(addr);
+// GeneralsX @build Codex 10/10/2026 Remove the obsolete address length; no socket query uses it here.
   retval=SetBlocking(FALSE);
   if (retval==-1)
     fprintf(stderr,"Couldn't set nonblocking mode!\n");

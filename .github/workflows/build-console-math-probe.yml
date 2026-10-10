@@ -10,7 +10,7 @@ permissions:
 jobs:
   build:
     # GeneralsX @build Codex 09/10/2026 Full Windows game refreshes keep this independent console job idle.
-    if: ${{ !contains(github.event.head_commit.message, '[windows-only]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[windows-only]') && !contains(github.event.head_commit.message, '[linux-only]') && !contains(github.event.head_commit.message, '[render-only]') }}
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -31,7 +31,7 @@ jobs:
           mkdir inputs output
           tar -xzf inputs.tar.gz -C inputs --wildcards 'source/*'
           printf '%s' "$SOURCE_OVERLAY" | openssl base64 -d -A > overlay.enc
-          echo '0351a0d988e5ee53e0d3124fbb81120e32be366c7c0a7c8807256302365401d7  overlay.enc' | sha256sum --check
+          echo '1b2a6fc209bcb5d6b82631af436cb112d6d377100ccdb336907f86a9116b372f  overlay.enc' | sha256sum --check
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in overlay.enc -out overlay.patch.gz -pass env:REPLAY_BUNDLE_KEY
           gzip -d overlay.patch.gz
           git apply --check --directory=inputs/source overlay.patch

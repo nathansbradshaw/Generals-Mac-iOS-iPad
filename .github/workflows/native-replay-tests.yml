@@ -49,7 +49,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$SOURCE_OVERLAY" | openssl base64 -d -A > source-overlay.enc
-          echo '0351a0d988e5ee53e0d3124fbb81120e32be366c7c0a7c8807256302365401d7  source-overlay.enc' | sha256sum --check
+          echo '1b2a6fc209bcb5d6b82631af436cb112d6d377100ccdb336907f86a9116b372f  source-overlay.enc' | sha256sum --check
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in source-overlay.enc -out source-overlay.patch.gz -pass env:REPLAY_BUNDLE_KEY
           gzip -d source-overlay.patch.gz
           git apply --check --directory=inputs/source source-overlay.patch
@@ -119,6 +119,13 @@ jobs:
           git -C "$RUNNER_TEMP/vcpkg" checkout --detach fab1c6dc7a944372a90a1e19ab5e8e32cd658fc2
           "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
           echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+      - name: Restore public Linux dependency archives
+        if: runner.os == 'Linux'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: linux-x86_64-online-20261009-${{ github.run_id }}
+          restore-keys: linux-x86_64-online-20261009-
       - name: Build Linux executable
         if: runner.os == 'Linux'
         shell: bash
@@ -129,6 +136,12 @@ jobs:
           set -euo pipefail
           cmake --preset linux64-deploy -DSAGE_GENERALS_ONLINE=ON -DSAGE_UPDATE_CHECK=OFF -DRTS_BUILD_GENERALS=OFF -DRTS_BUILD_CORE_TOOLS=OFF -DRTS_BUILD_ZEROHOUR_TOOLS=OFF -DRTS_BUILD_OPTION_SAGE_PATCH=OFF -DRTS_BUILD_OPTION_DEBUG=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           cmake --build build/linux64-deploy --target z_generals -j 4
+      - name: Save public Linux dependency archives
+        if: always() && runner.os == 'Linux'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: linux-x86_64-online-20261009-${{ github.run_id }}
       - name: Run Linux replay and compare state
         if: runner.os == 'Linux'
         shell: bash

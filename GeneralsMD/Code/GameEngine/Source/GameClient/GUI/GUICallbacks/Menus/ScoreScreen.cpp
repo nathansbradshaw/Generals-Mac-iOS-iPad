@@ -117,6 +117,7 @@ static NameKeyType buttonSaveReplayID = NAMEKEY_INVALID;
 static NameKeyType backdropID = NAMEKEY_INVALID;
 
 static GameWindow *parent = nullptr;
+static Bool s_scoreFocusPending = FALSE;
 static GameWindow *buttonOk = nullptr;
 //static GameWindow *buttonRehost = nullptr;
 static GameWindow *buttonContinue = nullptr;
@@ -369,8 +370,8 @@ void ScoreScreenInit( WindowLayout *layout, void *userData )
 	// Make Sure the layout is visible
 	layout->hide( FALSE );
 
-	// set keyboard focus to main parent
-	TheWindowManager->winSetFocus( parent );
+	// GeneralsX @bugfix Codex 10/10/2026 Game-data cleanup runs after init; assign score focus on the first update after cleanup.
+	s_scoreFocusPending = TRUE;
 	ReplayWasPressed = FALSE;
 	if (s_blankLayout)
 	{
@@ -393,6 +394,7 @@ void FixupScoreScreenMovieWindow()
 //-------------------------------------------------------------------------------------------------
 void ScoreScreenShutdown( WindowLayout *layout, void *userData )
 {
+	s_scoreFocusPending = FALSE;
 	DontShowMainMenu = FALSE; //KRIS
 
 	// hide the layout
@@ -409,6 +411,11 @@ void ScoreScreenShutdown( WindowLayout *layout, void *userData )
 //-------------------------------------------------------------------------------------------------
 void ScoreScreenUpdate( WindowLayout * layout, void *userData)
 {
+	if (s_scoreFocusPending && !TheGameLogic->isClearingGameData()) {
+		TheWindowManager->winSetFocus(parent);
+		s_scoreFocusPending = FALSE;
+	}
+
 	WindowLayout *popupReplayLayout = TheShell->getPopupReplayLayout();
 	if (popupReplayLayout != nullptr) {
 		if (popupReplayLayout->isHidden() == FALSE) {

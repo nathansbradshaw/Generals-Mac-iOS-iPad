@@ -2166,7 +2166,8 @@ void ControlBar::switchToContext( ControlBarContext context, Drawable *draw )
 	// save a pointer for the currently selected drawable
 	m_currentSelectedDrawable = draw;
 
-	if (IsInGameChatActive() == FALSE && TheGameLogic && !TheGameLogic->isInShellGame()) {
+	// GeneralsX @bugfix Codex 10/10/2026 In-game context changes must not steal focus from shell screens after the match ends.
+	if (IsInGameChatActive() == FALSE && TheGameLogic && TheGameLogic->isInGame() && !TheGameLogic->isInShellGame()) {
 		TheWindowManager->winSetFocus( nullptr );
 	}
 

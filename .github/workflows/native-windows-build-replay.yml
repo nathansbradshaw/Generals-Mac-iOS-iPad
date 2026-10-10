@@ -1,0 +1,129 @@
+name: Native Windows build and replay
+# GeneralsX @build Codex 10/10/2026 Validate public Windows corrections with the approved short fixture.
+on:
+  push:
+    branches: [codex/windows-public-build-fixes-20261010]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-windows-public-build-replay
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Preserve checked-in source bytes
+        shell: bash
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          path: source
+          persist-credentials: false
+      - name: Audit exact checked-out source before compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "$GITHUB_SHA"
+          python source/scripts/qa/replay/audit-native-network-build.py --source source --expected source/scripts/qa/replay/windows-build-expected-identities.json --output output/source-before.json
+          git -C source status --porcelain --untracked-files=no > output/source-before-status.txt
+          test ! -s output/source-before-status.txt
+      - name: Recover only approved assets and short fixture
+        shell: bash
+        env:
+          REPLAY_INPUT_URL: ${{ secrets.GENERALSX_REPLAY_INPUT_URL_20261008 }}
+          REPLAY_BUNDLE_KEY: ${{ secrets.GENERALSX_REPLAY_BUNDLE_KEY_20261008 }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location "$REPLAY_INPUT_URL" --output inputs.enc
+          echo '856a5771377d272238a6275a03e6e94af26a10a0e9ab5af0b4b8f0d1168f4704  inputs.enc' | sha256sum --check
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in inputs.enc -out inputs.tar.gz -pass env:REPLAY_BUNDLE_KEY
+          mkdir inputs
+          tar -xzf inputs.tar.gz -C inputs --wildcards 'assets/*' 'base-assets/*' 'fixture/*'
+          test ! -e inputs/source
+      - name: Setup native MSVC x86
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x86
+      - name: Restore public dependency archives
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ~/AppData/Local/vcpkg/archives
+          key: windows-public-x86-20261010-${{ github.run_id }}
+          restore-keys: windows-public-x86-20261010-
+      - name: Configure checked-out project manifest and public networking SDK
+        id: configure
+        shell: pwsh
+        working-directory: source
+        run: |
+          python scripts/qa/replay/require-fresh-network-archive.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --preset win32 "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x86-windows-static-md -DVCPKG_OVERLAY_PORTS=cmake/vcpkg-overlay-ports -DSAGE_USE_DX8=ON -DSAGE_GENERALS_ONLINE=ON -DSAGE_UPDATE_CHECK=OFF -DRTS_BUILD_GENERALS=OFF -DRTS_BUILD_CORE_TOOLS=OFF -DRTS_BUILD_ZEROHOUR_TOOLS=OFF -DRTS_BUILD_OPTION_SAGE_PATCH=OFF -DRTS_BUILD_OPTION_DEBUG=OFF -DRTS_CRASHDUMP_ENABLE=OFF "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Save public dependency archives for bounded retries
+        if: always()
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ~/AppData/Local/vcpkg/archives
+          key: windows-public-x86-20261010-${{ github.run_id }}
+      - name: Compile Zero Hour native executable
+        shell: pwsh
+        working-directory: source
+        run: |
+          cmake --build build/win32 --config Release --target z_generals -j 4 -- -k 0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Audit actual sources, SDK headers, archives and game link references
+        shell: bash
+        run: |
+          set -euo pipefail
+          python source/scripts/qa/replay/audit-native-network-build.py --source source --expected source/scripts/qa/replay/windows-build-expected-identities.json --build source/build/win32 --triplet x86-windows-static-md --output output/source-compiled.json
+          git -C source status --porcelain --untracked-files=no > output/source-after-status.txt
+          test ! -s output/source-after-status.txt
+      - name: Stage native PE and stub dependencies beside approved assets
+        shell: pwsh
+        run: |
+          Copy-Item source/build/win32/GeneralsMD/Release/generalszh.exe inputs/assets/generalszh.exe
+          Copy-Item source/build/win32/_deps/miles-build/Release/mss32.dll inputs/assets/mss32.dll
+          Copy-Item source/build/win32/_deps/bink-build/Release/binkw32.dll inputs/assets/binkw32.dll
+          dumpbin /dependents inputs/assets/generalszh.exe
+      - name: Test both approved replay header formats on native Windows
+        shell: pwsh
+        run: |
+          python source/scripts/qa/replay/transcode-replay-header.py inputs/fixture/crossplay.rep inputs/fixture/crossplay-header16.rep --report output/header-conversion.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python source/scripts/qa/replay/run-native-windows-fixture.py --source-commit $env:GITHUB_SHA --executable inputs/assets/generalszh.exe --assets inputs/assets --base-assets inputs/base-assets --fixture inputs/fixture/crossplay.rep --reference inputs/fixture/expected --output output/raw
+          $rawStatus = $LASTEXITCODE
+          python source/scripts/qa/replay/run-native-windows-fixture.py --source-commit $env:GITHUB_SHA --executable inputs/assets/generalszh.exe --assets inputs/assets --base-assets inputs/base-assets --fixture inputs/fixture/crossplay-header16.rep --reference inputs/fixture/expected --output output/utf16
+          if ($rawStatus -ne 0 -or $LASTEXITCODE -ne 0) { exit 1 }
+      - name: Preserve produced client even when a replay gate fails
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f inputs/assets/generalszh.exe ]; then
+            mkdir client
+            cp inputs/assets/generalszh.exe inputs/assets/mss32.dll inputs/assets/binkw32.dll client/
+            bash source/scripts/qa/replay/package-windows-ca.sh client
+            tar -czf output/public-client.tar.gz client
+          fi
+      - name: Encrypt approved-fixture diagnostics
+        if: always()
+        shell: bash
+        env:
+          REPLAY_BUNDLE_KEY: ${{ secrets.GENERALSX_REPLAY_BUNDLE_KEY_20261008 }}
+        run: |
+          set -euo pipefail
+          if [ -d output ]; then
+            tar -czf diagnostics.tar.gz output
+            openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -in diagnostics.tar.gz -out diagnostics.enc -pass env:REPLAY_BUNDLE_KEY
+          fi
+      - name: Retain encrypted test evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: windows-public-build-replay
+          path: diagnostics.enc
+          if-no-files-found: ignore
+          retention-days: 7

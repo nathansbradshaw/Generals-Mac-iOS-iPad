@@ -435,3 +435,13 @@ docker rmi generalsx/linux-builder:latest generalsx/mingw-builder:latest
 - **Phase 1 Details**: See [docs/WORKDIR/phases/PHASE01_IMPLEMENTATION_PLAN.md](../docs/WORKDIR/phases/PHASE01_IMPLEMENTATION_PLAN.md)
 - **Docker Workflow**: See [docs/WORKDIR/support/DOCKER_WORKFLOW.md](../docs/WORKDIR/support/DOCKER_WORKFLOW.md)
 - **Instructions**: See [.github/instructions/scripts.instructions.md](../.github/instructions/scripts.instructions.md)
+
+### Native Windows build and replay evidence
+
+The manual `native-windows-build-replay.yml` workflow builds the experimental
+MSVC x86 Zero Hour target from its exact checked-out commit.
+`scripts/qa/replay/audit-native-network-build.py` verifies source and linked GNS
+SDK identities; `run-native-windows-fixture.py` requires native Windows completion
+and exact populated states for both approved replay header formats. Fixture
+assets remain in the existing encrypted test bundle. This does not certify
+rendering, audio, campaigns or live multiplayer.

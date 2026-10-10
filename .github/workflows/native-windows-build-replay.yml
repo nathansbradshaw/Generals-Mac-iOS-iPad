@@ -102,9 +102,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -f inputs/assets/generalszh.exe ]; then
+          if [ -f source/build/win32/GeneralsMD/Release/generalszh.exe ]; then
             mkdir client
-            cp inputs/assets/generalszh.exe inputs/assets/mss32.dll inputs/assets/binkw32.dll client/
+            cp source/build/win32/GeneralsMD/Release/generalszh.exe client/
+            cp source/build/win32/_deps/miles-build/Release/mss32.dll source/build/win32/_deps/bink-build/Release/binkw32.dll client/
             bash source/scripts/qa/replay/package-windows-ca.sh client
             tar -czf output/public-client.tar.gz client
           fi

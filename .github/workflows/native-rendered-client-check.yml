@@ -87,6 +87,12 @@ jobs:
           export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/candidate/client"
           mkdir output
           cp candidate/client/cacert.pem inputs/assets/cacert.pem
+          # GeneralsX @test Codex 09/10/2026 Select and verify the installed software GPU on a runner without hardware graphics.
+          driver=$(find /usr/share/vulkan/icd.d -maxdepth 1 -name '*lvp*.json' -print -quit)
+          test -n "$driver"
+          export VK_DRIVER_FILES="$driver" VK_ICD_FILENAMES="$driver" LP_NUM_THREADS=2
+          ldd candidate/client/libdxvk_d3d8.so > output/dxvk-linked-libraries.txt
+          xvfb-run -a --server-args='-screen 0 1024x768x24 -nolisten tcp' vulkaninfo --summary > output/vulkan-summary.log 2>&1
           xvfb-run -a --server-args='-screen 0 1024x768x24 -nolisten tcp' python3 scripts/qa/replay/run-rendered-platform-replay.py --executable candidate/client/GeneralsXZH --assets inputs/assets --base-assets inputs/base-assets --replay inputs/fixture/crossplay.rep --expected inputs/fixture/expected --archive-manifest inputs/fixture/archive-sha256.json --output output/rendered --timeout 600
       - name: Encrypt graphics diagnostics
         if: always()

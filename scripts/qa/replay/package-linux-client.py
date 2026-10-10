@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import ssl
 import struct
 import subprocess
 
@@ -39,7 +40,9 @@ assert target is not None, 'Client is not a supported ELF executable'
 output.mkdir(parents=True, exist_ok=False)
 shutil.copy2(executable, output/'GeneralsXZH')
 assert b'-----BEGIN CERTIFICATE-----' in args.ca_bundle.read_bytes(), 'Missing certificate trust bundle'
-subprocess.run(['openssl', 'x509', '-in', str(args.ca_bundle), '-noout'], check=True)
+trust = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+trust.load_verify_locations(cafile=str(args.ca_bundle))
+assert trust.cert_store_stats()['x509_ca'] > 0, 'Certificate trust bundle contains no CA anchors'
 shutil.copy2(args.ca_bundle, output/'cacert.pem')
 libraries = {}
 skipped = 0

@@ -60,10 +60,13 @@ int main(int argc, char** argv)
     // All input and output values are raw IEEE-754 hexadecimal bits.
     uint32_t bits[17];
     bool topple = false;
+    bool normalize = false;
     for (int i = 1; i < argc; ++i)
     {
         if (std::strcmp(argv[i], "--topple") == 0)
             topple = true;
+        else if (std::strcmp(argv[i], "--normalize") == 0)
+            normalize = true;
         else if (std::strcmp(argv[i], "--game-fpu") == 0)
             ConfigureGameFPU();
         else
@@ -71,6 +74,26 @@ int main(int argc, char** argv)
     }
     while (std::scanf("%x", &bits[0]) == 1)
     {
+        // GeneralsX @test Codex 09/10/2026 Read three local input words and compare the actual normalization routine.
+        if (normalize)
+        {
+            if (std::scanf("%x %x", &bits[1], &bits[2]) != 2)
+                return 2;
+            Vector3 vector(FromBits(bits[0]), FromBits(bits[1]), FromBits(bits[2]));
+            const float length2 = vector.Length2();
+            Emit(length2);
+            Emit(vector.Length());
+            Emit(WWMath::Inv_Sqrt(length2));
+            Vector3 normalized = vector;
+            normalized.Normalize();
+            Emit(normalized.X); Emit(normalized.Y); Emit(normalized.Z);
+            // The reciprocal-square-root expression used by the non-MSVC implementation.
+            const float portableInverse = 1.0f / static_cast<float>(sqrt(length2));
+            Emit(portableInverse);
+            Emit(vector.X * portableInverse); Emit(vector.Y * portableInverse); Emit(vector.Z * portableInverse);
+            std::putchar('\n');
+            continue;
+        }
         for (int i = 1; i < 17; ++i)
             if (std::scanf("%x", &bits[i]) != 1)
                 return 2;

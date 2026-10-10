@@ -48,6 +48,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Error 'Console compile failed; diagnostics are encrypted.'; exit $LASTEXITCODE }
           cmd /c 'output\probe.exe --topple < NUL > output\empty-input.log'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmd /c 'output\probe.exe --normalize --game-fpu < NUL > output\empty-normalize-input.log'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dumpbin /dependents output/probe.exe > output/dependents.txt
           (Get-FileHash output/probe.exe -Algorithm SHA256).Hash | Set-Content output/sha256.txt
           Write-Output 'Generic native Windows console probe built; no captured inputs were sent or tested.'

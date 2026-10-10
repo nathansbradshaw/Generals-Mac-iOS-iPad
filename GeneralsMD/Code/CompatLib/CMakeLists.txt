@@ -47,6 +47,10 @@ else()
 # macOS and Win64 both build real d3dx8 STATIC above; Linux can use the stub for now
 add_library(d3dx8 INTERFACE)
 target_link_libraries(d3dx8 INTERFACE d3d8lib)
+# GeneralsX @build Codex 10/10/2026 The SDK name resolves to this target; link its native archive explicitly.
+if(SAGE_USE_DX8 AND MSVC)
+    target_link_libraries(d3dx8 INTERFACE "${dx8_SOURCE_DIR}/d3dx8.lib")
+endif()
 endif()
 
 # GeneralsX @build BenderAI 10/02/2026

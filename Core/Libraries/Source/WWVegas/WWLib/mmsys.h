@@ -41,5 +41,10 @@
 */
 
 #pragma warning(disable:4201)
+// GeneralsX @build Codex 10/10/2026 Keep the Linux multimedia stub from shadowing the native Windows SDK.
+#ifdef _WIN32
 #include <mmsystem.h>
+#else
+#include "../WWAudio/mmsystem_compat.h"
+#endif
 #pragma warning(default:4201)

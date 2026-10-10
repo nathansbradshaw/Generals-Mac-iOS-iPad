@@ -32,7 +32,8 @@
 #include <Utility/intrin_compat.h>
 #include <cstdint>
 
-#ifndef _int64
+// GeneralsX @build Codex 10/10/2026 Preserve MSVC native 64-bit integer keywords.
+#if !defined(_MSC_VER) && !defined(_int64)
 	typedef int64_t _int64;
 #endif
 

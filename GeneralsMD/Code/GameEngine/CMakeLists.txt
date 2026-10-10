@@ -1190,8 +1190,11 @@ endif()
 
 target_include_directories(z_gameengine PUBLIC
     Include
-    ../CompatLib/Include  # Needed for d3dx8math.h in PCH
 )
+# GeneralsX @build Codex 10/10/2026 Native x86 Windows uses the real DirectX SDK headers.
+if(NOT WIN32 OR CMAKE_SIZEOF_VOID_P EQUAL 8)
+    target_include_directories(z_gameengine PUBLIC ../CompatLib/Include)
+endif()
 
 # Ensure DXVK headers are available when building on Linux
 if(NOT SAGE_USE_DX8 AND dxvk_SOURCE_DIR)

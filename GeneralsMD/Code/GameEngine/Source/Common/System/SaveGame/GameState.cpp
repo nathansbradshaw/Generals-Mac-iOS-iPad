@@ -31,7 +31,10 @@
 #include "PreRTS.h"
 #ifndef _WIN32
 #include <filesystem>     // std::filesystem for Linux directory operations
+// GeneralsX @build Codex 10/10/2026 Windows provides CreateDirectory through its SDK.
+#ifndef _WIN32
 #include "socket_compat.h" // CreateDirectory stub for Linux
+#endif
 #endif
 #include "Common/file.h"
 #include "Common/FileSystem.h"

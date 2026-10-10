@@ -43,7 +43,8 @@
 #include "formconv.h"
 #pragma warning (disable : 4201)		// nonstandard extension - nameless struct
 #include <windows.h>
-#include <mmsystem.h>
+// GeneralsX @build Codex 10/10/2026 Select native multimedia headers or the portable stub.
+#include "mmsys.h"
 
 static StringClass CapsWorkString;
 

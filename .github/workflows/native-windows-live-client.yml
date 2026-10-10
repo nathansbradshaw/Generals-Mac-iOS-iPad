@@ -15,6 +15,47 @@ concurrency:
   group: generalsx-native-windows-live
   cancel-in-progress: false
 jobs:
+  offline-preflight:
+    if: ${{ contains(github.event.head_commit.message, '[worker-preflight]') }}
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Recover only the previously approved encrypted inputs and verified native client
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPLAY_INPUT_URL: ${{ secrets.GENERALSX_REPLAY_INPUT_URL_20261008 }}
+          REPLAY_BUNDLE_KEY: ${{ secrets.GENERALSX_REPLAY_BUNDLE_KEY_20261008 }}
+          SOURCE_RUN_ID: '38064720699'
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location "$REPLAY_INPUT_URL" --output inputs.enc
+          echo '856a5771377d272238a6275a03e6e94af26a10a0e9ab5af0b4b8f0d1168f4704  inputs.enc' | sha256sum --check
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in inputs.enc -out inputs.tar.gz -pass env:REPLAY_BUNDLE_KEY
+          mkdir inputs client-artifact
+          tar -xzf inputs.tar.gz -C inputs --wildcards 'assets/*' 'base-assets/*' 'fixture/*'
+          gh run download "$SOURCE_RUN_ID" --repo nathansbradshaw/Generals-Mac-iOS-iPad -n replay-diagnostics-windows-x86 -D client-artifact
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in client-artifact/diagnostics.enc -out client.tar.gz -pass env:REPLAY_BUNDLE_KEY
+          tar -xzf client.tar.gz output/online-client.tar.gz output/sdk3-compiled-identity.json output/online-callback/result.json output/windows-command-smoke-hook.json
+          tar -xzf output/online-client.tar.gz
+          python -c 'import json; from pathlib import Path; c=json.loads(Path("output/online-callback/result.json").read_text()); assert c["native_windows_os"] and c["passed_callback_probe"]; a=json.loads(Path("output/sdk3-compiled-identity.json").read_text()); assert a["source_identities_verified"] and a["installed_archives_and_headers_verified"] and a["port_version"]==3'
+      - name: Exercise the actual Windows callback and metadata observer without real login
+        shell: pwsh
+        run: |
+          Copy-Item client/generalszh.exe,client/mss32.dll,client/binkw32.dll,client/cacert.pem inputs/assets/
+          python scripts/qa/replay/run-headless-online-callback-probe.py --executable inputs/assets/generalszh.exe --assets inputs/assets --base-assets inputs/base-assets --output offline-callback --seconds 20
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/qa/replay/windows-live-observer.py preflight --root offline-callback --plan scripts/qa/replay/windows-live-plan.json --client client --fixture inputs/fixture/crossplay.rep
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Export only offline preflight metadata
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: windows-worker-offline-preflight
+          path: safe-live-metadata/worker-preflight.json
+          retention-days: 7
   live:
     if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[live-start]') }}
     runs-on: windows-2022

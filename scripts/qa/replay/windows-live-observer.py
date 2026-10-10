@@ -102,12 +102,13 @@ def snapshot(root, process):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('phase', choices=['start', 'lobby', 'match', 'release', 'local-replay', 'keepalive'])
+    p.add_argument('phase', choices=['preflight', 'start', 'lobby', 'match', 'release', 'local-replay', 'keepalive'])
     p.add_argument('--root', type=Path, required=True)
     p.add_argument('--plan', type=Path, required=True)
     p.add_argument('--client', type=Path)
     p.add_argument('--assets', type=Path)
     p.add_argument('--base-assets', type=Path)
+    p.add_argument('--fixture', type=Path)
     p.add_argument('--seconds', type=int, default=600)
     a = p.parse_args()
     if sys.platform != 'win32':
@@ -115,6 +116,28 @@ def main():
     assert 1 <= a.seconds <= 1800
     root = a.root.resolve()
     plan = json.loads(a.plan.read_text())
+    if a.phase == 'preflight':
+        assert plan['authorized'] is False, 'Offline preflight must use an unallocated plan'
+        assert 'GENERALSX_WINDOWS_LIVE_CONFIG' not in os.environ
+        data = (a.client / 'generalszh.exe').read_bytes()
+        assert sha(data) == plan['binary_sha256'] and zlib.crc32(data) & 0xffffffff == plan['binary_crc32']
+        assert alive(os.getpid()), 'Verify the Windows observer process-liveness API'
+        header = recording(a.fixture)
+        assert header and header['frame_count'] >= 2100
+        callback = json.loads((root / 'result.json').read_text())
+        assert callback['native_windows_os'] and callback['passed_callback_probe']
+        public = Path('safe-live-metadata')
+        public.mkdir(exist_ok=True)
+        report = {'native_windows_os': True, 'metadata_worker_offline_preflight': True,
+                  'allocated_real_qa_login_invoked': False, 'plan_authorized': False,
+                  'binary_sha256': sha(data), 'binary_crc32': zlib.crc32(data) & 0xffffffff,
+                  'actual_windows_fake_callback_passed': True,
+                  'observer_process_liveness_api_passed': True,
+                  'approved_fixture_header_parsed': True, 'fixture_sha256': header['sha256'],
+                  'raw_fixture_or_gameplay_exported': False}
+        (public / 'worker-preflight.json').write_text(json.dumps(report, indent=2))
+        print(json.dumps(report))
+        return 0
     assert plan['authorized'] is True and plan['account'] == 34633
     assert re.fullmatch(r'[A-Za-z0-9_-]+', plan['case'])
     assert plan['end_frame'] in (2100, 30000)

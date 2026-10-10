@@ -2,9 +2,9 @@
   "authorized": false,
   "case": "UNALLOCATED",
   "account": 34633,
-  "source_run_id": 0,
-  "binary_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-  "binary_crc32": 0,
+  "source_run_id": 38064720699,
+  "binary_sha256": "e39b60e04fb46bc5de4ed328396c1e4e9fe612a9a1c1e4990710bf5a989063b6",
+  "binary_crc32": 2277001445,
   "end_frame": 2100,
   "command_mode": "surrender",
   "release_for_local_replay": false

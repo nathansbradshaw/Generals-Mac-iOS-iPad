@@ -201,6 +201,9 @@ if(WIN32)
         # GeneralsX @build Codex 10/10/2026 Compile the shared Windows input implementations for both games.
         Source/Win32Device/GameClient/Win32DIKeyboard.cpp
         Source/Win32Device/GameClient/Win32Mouse.cpp
+        # GeneralsX @build Codex 10/10/2026 Restore the existing native audio/video implementations required by Win32 factories.
+        Source/MilesAudioDevice/MilesAudioManager.cpp
+        Source/VideoDevice/Bink/BinkVideoPlayer.cpp
     )
 endif()
 

@@ -234,6 +234,11 @@ set(WW3D2_SRC
     ww3dtrig.h
 )
 
+# GeneralsX @build Codex 10/10/2026 Native WW3D movie capture calls the existing AVI frame-grabber implementation.
+if(WIN32)
+    list(APPEND WW3D2_SRC FramGrab.cpp)
+endif()
+
 add_library(corei_ww3d2 INTERFACE)
 
 target_sources(corei_ww3d2 INTERFACE ${WW3D2_SRC})

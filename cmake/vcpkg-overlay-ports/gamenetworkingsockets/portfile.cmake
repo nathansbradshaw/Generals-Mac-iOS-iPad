@@ -43,6 +43,8 @@ vcpkg_cmake_configure(
     OPTIONS
         -DUSE_CRYPTO=OpenSSL
         -DBUILD_STATIC_LIB=${BUILD_STATIC_LIB}
+        # GeneralsX @build Codex 10/10/2026 Match Protobuf imports to the triplet library linkage on native Windows.
+        -DProtobuf_USE_STATIC_LIBS=${BUILD_STATIC_LIB}
         -DBUILD_SHARED_LIB=${BUILD_SHARED_LIB}
         -DMSVC_CRT_STATIC=${MSVC_CRT_STATIC}
         -DBUILD_TESTS=OFF

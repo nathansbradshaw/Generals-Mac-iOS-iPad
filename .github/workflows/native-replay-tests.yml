@@ -54,6 +54,21 @@ jobs:
           gzip -d source-overlay.patch.gz
           git apply --check --directory=inputs/source source-overlay.patch
           git apply --directory=inputs/source source-overlay.patch
+      - name: Apply source-only SDK3 and preserved math correction
+        shell: bash
+        env:
+          SDK3_OVERLAY: ${{ secrets.GENERALSX_REPLAY_SDK3_OVERLAY_20261010 }}
+          REPLAY_BUNDLE_KEY: ${{ secrets.GENERALSX_REPLAY_BUNDLE_KEY_20261008 }}
+        run: |
+          set -euo pipefail
+          test -n "$SDK3_OVERLAY"
+          printf '%s' "$SDK3_OVERLAY" | openssl base64 -d -A > sdk3-overlay.enc
+          echo 'dc921dceeef0445d5be30c64b3869da268d9973092f90ff731eabad90dd87f9b  sdk3-overlay.enc' | sha256sum --check
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in sdk3-overlay.enc -out sdk3-overlay.patch.gz -pass env:REPLAY_BUNDLE_KEY
+          gzip -d sdk3-overlay.patch.gz
+          git apply --check --directory=inputs/source sdk3-overlay.patch
+          git apply --directory=inputs/source sdk3-overlay.patch
+          python scripts/qa/replay/audit-native-network-build.py --source inputs/source --expected scripts/qa/replay/sdk3-expected-identities.json --output output/sdk3-source-identity.json
       - name: Set up Windows compiler
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
@@ -167,6 +182,18 @@ jobs:
             python3 scripts/qa/replay/package-linux-client.py --build inputs/source/build/linux64-deploy --output client
           fi
           tar -czf output/online-client.tar.gz client
+      - name: Audit actual networking archives and compiled sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ '${{ runner.os }}' = Windows ]; then
+            build=inputs/source/build/win32
+            triplet=x86-windows-static-md
+          else
+            build=inputs/source/build/linux64-deploy
+            triplet=x64-linux
+          fi
+          python scripts/qa/replay/audit-native-network-build.py --source inputs/source --expected scripts/qa/replay/sdk3-expected-identities.json --build "$build" --triplet "$triplet" --output output/sdk3-compiled-identity.json
       - name: Encrypt replay diagnostics
         if: always()
         shell: bash

@@ -26,6 +26,11 @@ source = args.source.resolve()
 checked = {}
 for name, checksum in expected['source_sha256'].items():
     actual = sha(source / name)
+    if actual != checksum:
+        discrepancy = {'path': name, 'actual_sha256': actual, 'expected_sha256': checksum,
+                       'lf_normalized_sha256': hashlib.sha256((source / name).read_bytes().replace(b'\r\n', b'\n')).hexdigest()}
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps({'source_identity_failed': discrepancy}, indent=2) + '\n')
     assert actual == checksum, 'Source identity mismatch: ' + name
     checked[name] = actual
 port = json.loads((source / 'cmake/vcpkg-overlay-ports/gamenetworkingsockets/vcpkg.json').read_text())
@@ -43,9 +48,11 @@ if args.build:
     target = installed / args.triplet
     headers = {}
     for name, checksum in expected['sdk_public_header_sha256'].items():
-        actual = sha(target / name)
+        candidates = list((target / 'include').rglob(Path(name).name))
+        assert len(candidates) == 1, 'Expected one installed SDK header: ' + name
+        actual = sha(candidates[0])
         assert actual == checksum, 'Installed SDK header mismatch: ' + name
-        headers[name] = actual
+        headers[str(candidates[0].relative_to(target))] = actual
     archives = {}
     for directory in ['lib', 'debug/lib']:
         matches = [p for p in (target / directory).glob('*GameNetworkingSockets_s.*') if p.suffix in ('.a', '.lib')]

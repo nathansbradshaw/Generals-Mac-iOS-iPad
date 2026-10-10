@@ -83,6 +83,12 @@ void NGMP_OnlineServicesManager::GetAndParseServiceConfig(std::function<void(voi
 				{
 					nlohmann::json jsonObject = nlohmann::json::parse(strBody);
 					pMgr->m_ServiceConfig = jsonObject.get<ServiceConfig>();
+                    // GeneralsX @feature Codex 09/10/2026 Older services omit
+                    // these optional fields; do not add them to the required JSON macro.
+                    if (jsonObject.contains("stun_servers") && jsonObject["stun_servers"].is_string())
+                        pMgr->m_ServiceConfig.stun_servers = jsonObject["stun_servers"].get<std::string>();
+                    if (jsonObject.contains("turn_servers") && jsonObject["turn_servers"].is_string())
+                        pMgr->m_ServiceConfig.turn_servers = jsonObject["turn_servers"].get<std::string>();
 				}
 				else
 				{
@@ -221,6 +227,20 @@ struct VersionCheckResponse
 };
 
 GenOnlineSettings NGMP_OnlineServicesManager::Settings;
+
+// GeneralsX @feature BenderAI 12/07/2026 Keep iOS lifecycle integration behind
+// a narrow bridge so the SDL platform device does not depend on NGMP headers.
+void GeneralsOnlineSuspendForAppLifecycle()
+{
+	if (std::shared_ptr<WebSocket> webSocket = NGMP_OnlineServicesManager::GetWebSocket())
+		webSocket->SuspendForAppLifecycle();
+}
+
+void GeneralsOnlineResumeFromAppLifecycle()
+{
+	if (std::shared_ptr<WebSocket> webSocket = NGMP_OnlineServicesManager::GetWebSocket())
+		webSocket->ResumeFromAppLifecycle();
+}
 
 NGMP_OnlineServicesManager::NGMP_OnlineServicesManager()
 {

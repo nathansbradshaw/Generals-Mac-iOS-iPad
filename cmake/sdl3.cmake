@@ -8,6 +8,18 @@
 # This avoids vcpkg issues with libsystemd and complex dependencies
 
 if(SAGE_USE_SDL3)
+    if(ANDROID)
+        # GeneralsX @build BenderAI 13/07/2026 Gradle exposes the official
+        # SDL Android AARs as Prefab packages. Reuse those shared libraries so
+        # SDLActivity and the engine never load duplicate SDL runtimes.
+        find_package(SDL3 REQUIRED CONFIG)
+        find_package(SDL3_image REQUIRED CONFIG)
+        add_library(sdl3lib INTERFACE)
+        target_link_libraries(sdl3lib INTERFACE SDL3::SDL3 SDL3_image::SDL3_image)
+        message(STATUS "SDL3 + SDL3_image configured from Android Prefab AARs")
+        return()
+    endif()
+
     # GeneralsX @build BenderAI 22/02/2026 (updated)
     # Strategy: FetchContent to compile SDL3 + SDL3_image from source
     # Docker environment (ubuntu:24.04) has build dependencies pre-installed

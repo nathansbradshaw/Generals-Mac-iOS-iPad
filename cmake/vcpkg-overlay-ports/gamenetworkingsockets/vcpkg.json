@@ -24,5 +24,6 @@
     "ice": {
       "description": "Build support for P2P connections using the native ICE client (STUN and TURN)."
     }
-  }
+  },
+  "port-version": 3
 }

@@ -1,0 +1,16 @@
+[binaries]
+c = '@ANDROID_LLVM_BIN@/@ANDROID_TARGET@-clang'
+cpp = '@ANDROID_LLVM_BIN@/@ANDROID_TARGET@-clang++'
+ar = '@ANDROID_LLVM_BIN@/llvm-ar'
+strip = '@ANDROID_LLVM_BIN@/llvm-strip'
+pkg-config = '@PKG_CONFIG_EXECUTABLE@'
+
+[host_machine]
+system = 'android'
+cpu_family = 'aarch64'
+cpu = 'armv8-a'
+endian = 'little'
+
+[properties]
+needs_exe_wrapper = true
+pkg_config_libdir = '@OUTPUT_DIRECTORY@/pkgconfig'

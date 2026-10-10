@@ -30,7 +30,7 @@
 // Platform headers with socket_compat.h providing Winsock → POSIX mapping
 #include <stdio.h>
 #include <sys/types.h>
-#include <sys/timeb.h>
+// GeneralsX @build Codex 13/07/2026 Remove unused obsolete sys/timeb.h dependency for Android/Bionic.
 #include <stdlib.h>
 #ifdef _WIN32
 #include <process.h>
@@ -1860,7 +1860,6 @@ bool Prepare_Directories(const char *rootdir, const char *filename)
 	}
 	return(true);
 }
-
 
 
 

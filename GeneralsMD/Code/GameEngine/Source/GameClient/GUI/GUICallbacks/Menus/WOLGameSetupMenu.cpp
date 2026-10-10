@@ -2853,6 +2853,28 @@ void WOLGameSetupMenuUpdate( WindowLayout * layout, void *userData)
 	}
 #endif
 
+	// GeneralsX @build Codex 08/10/2026 Opt-in readiness for invisible diagnostic clients.
+	// Perform the same local-slot/service update as the Accept button, once per lobby.
+	if (getenv("GENERALSX_AUTOREADY") && TheNGMPGame && !TheNGMPGame->isGameInProgress())
+	{
+		static int64_t acceptedLobby = -1;
+		auto *lobby = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();
+		auto *mesh = NGMP_OnlineServicesManager::GetNetworkMesh();
+		if (lobby && mesh && !lobby->IsHost() && lobby->GetCurrentLobby().lobbyID != acceptedLobby)
+		{
+			Int humans = 0;
+			for (auto &member : lobby->GetCurrentLobby().members) if (member.IsHuman()) ++humans;
+			GameSlot *slot = TheNGMPGame->getSlot(TheNGMPGame->getLocalSlotNum());
+			if (slot && slot->isHuman() && humans >= 2 && mesh->GetAllConnections().size() >= humans - 1)
+			{
+				slot->setAccept();
+				lobby->ApplyLocalUserPropertiesToCurrentNetworkRoom();
+				WOLDisplaySlotList();
+				acceptedLobby = lobby->GetCurrentLobby().lobbyID;
+			}
+		}
+	}
+
 	// -startAutostart: host auto-presses Start once every human is ready and the
 	// P2P mesh has a connection to each peer, so the game-start / transport
 	// handoff can be exercised headlessly. Retry on an interval (StartPressed
@@ -2861,7 +2883,8 @@ void WOLGameSetupMenuUpdate( WindowLayout * layout, void *userData)
 	{
 		static Int s_startAutostartDelay = 180;	// ~3s initial settle
 		NGMP_OnlineServices_LobbyInterface* pLI = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();
-		if (pLI != nullptr && pLI->IsHost() && TheNGMPGame != nullptr && !TheNGMPGame->isGameInProgress())
+		// GeneralsX @bugfix Codex 08/10/2026 Do not restart the five-second countdown on every two-second autostart retry.
+		if (pLI != nullptr && pLI->IsHost() && TheNGMPGame != nullptr && !TheNGMPGame->isGameInProgress() && !TheNGMPGame->IsCountdownStarted())
 		{
 			if (s_startAutostartDelay > 0)
 			{

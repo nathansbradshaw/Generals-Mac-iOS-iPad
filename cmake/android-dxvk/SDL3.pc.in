@@ -1,0 +1,10 @@
+prefix=@SDL3_ROOT@
+includedir=@SDL3_INCLUDE_DIR@
+libdir=@SDL3_LIBRARY_DIR@
+
+Name: SDL3
+Description: SDL3 Android Prefab shared library
+Version: 3.4.2
+Libs: -L${libdir} -lSDL3
+Cflags: -I${includedir}
+

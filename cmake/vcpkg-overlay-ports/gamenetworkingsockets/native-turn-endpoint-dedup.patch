@@ -1,0 +1,13 @@
+--- a/src/steamnetworkingsockets/clientlib/steamnetworkingsockets_ice_client.cpp
++++ b/src/steamnetworkingsockets/clientlib/steamnetworkingsockets_ice_client.cpp
+@@ -1235,6 +1235,10 @@
+ 		{
+ 			netadr_t adr;
+ 			SteamNetworkingIPAddrToNetAdr( adr, ip );
++			// GeneralsX @bugfix Codex 09/10/2026 Native TURN retries identify servers by resolved address.
++			// Preserve the first endpoint and its credentials so repeated URLs cannot restart the same retry.
++			if ( has_element( m_vecTURNServers, adr ) )
++				continue;
+ 			m_vecTURNServers.push_back( adr );
+ 			TURNCredentials cred;
+ 			cred.m_strUsername = pszUsername;

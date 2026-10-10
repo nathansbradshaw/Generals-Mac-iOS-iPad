@@ -46,6 +46,8 @@ struct AnimatedCursor;
 class SDL3Mouse : public Mouse
 {
 public:
+	// GeneralsX @feature Codex 09/10/2026 Mobile menus must be ready before the first finger lands.
+	Bool hasTouchInput() const override;
 	SDL3Mouse(SDL_Window* window);
 	virtual ~SDL3Mouse(void);
 

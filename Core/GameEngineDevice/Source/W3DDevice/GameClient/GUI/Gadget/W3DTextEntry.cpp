@@ -373,6 +373,13 @@ void W3DGadgetTextEntryImageDraw( GameWindow *window, WinInstanceData *instData 
 
 	}
 
+	// GeneralsX @bugfix nathanbradshaw 12/07/2026 Fall back to color drawing when optional WND artwork is incomplete.
+	if( leftImage == nullptr || rightImage == nullptr || centerImage == nullptr || smallCenterImage == nullptr )
+	{
+		W3DGadgetTextEntryDraw( window, instData );
+		return;
+	}
+
 	// get image sizes for the ends
 	ICoord2D leftSize, rightSize;
 	leftSize.x = leftImage->getImageWidth();

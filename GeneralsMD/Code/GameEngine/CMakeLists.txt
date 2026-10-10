@@ -1168,6 +1168,15 @@ if(SAGE_GENERALS_ONLINE)
         Include/GameNetwork/GeneralsOnline/HTTP
         Include/GameNetwork/GeneralsOnline/Vendor
     )
+    if(ANDROID)
+        # GeneralsX @build Codex 09/10/2026 Protobuf's package checks for a
+        # compiler even though the Android GNS library is already generated.
+        # Resolve that executable on the build host, outside the NDK sysroot.
+        find_program(GENERALSX_HOST_PROTOC NAMES protoc NO_CMAKE_FIND_ROOT_PATH)
+        if(GENERALSX_HOST_PROTOC)
+            set(Protobuf_PROTOC_EXECUTABLE "${GENERALSX_HOST_PROTOC}" CACHE FILEPATH "Host Protobuf compiler" FORCE)
+        endif()
+    endif()
     find_package(GameNetworkingSockets CONFIG REQUIRED)
     find_package(CURL REQUIRED)
     target_link_libraries(z_gameengine PUBLIC

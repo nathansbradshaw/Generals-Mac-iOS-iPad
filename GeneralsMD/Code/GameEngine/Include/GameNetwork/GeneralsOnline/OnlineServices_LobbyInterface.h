@@ -4,6 +4,8 @@
 #include "OnlineServices_RoomsInterface.h"
 #include "GameNetwork/GameInfo.h"
 #include <chrono>
+#include <memory>
+#include "PendingLobbySignalling.h"
 #include "Common/PlayerList.h"
 #include "Common/Player.h"
 #include "GameClient/InGameUI.h"
@@ -386,9 +388,11 @@ public:
 
 	bool IsInLobby() const { return m_CurrentLobby.lobbyID != -1; }
 
-	NetworkMesh* GetNetworkMeshForLobby() { return m_pLobbyMesh; }
+	NetworkMesh* GetNetworkMeshForLobby() { return m_pLobbyMesh.get(); }
 
 	void JoinLobby(LobbyEntry lobby, std::string strPassword);
+
+    void QueueConnectionSignalling(int64_t userID, const std::string& middlewareID, uint16_t preferredPort);
 
 	void LeaveCurrentLobby();
 
@@ -454,7 +458,10 @@ private:
 	std::string m_strTURNToken = "";
 
 	// TODO_NGMP: cleanup
-	NetworkMesh* m_pLobbyMesh = nullptr;
+	// GeneralsX @bugfix Codex 09/10/2026 Keep the mesh alive until its callback dispatch unwinds.
+	std::shared_ptr<NetworkMesh> m_pLobbyMesh;
+    PendingLobbySignalling m_pendingLobbySignalling;
+    bool m_bSignallingCallbacksReady = false;
 
 	bool m_bLobbyListDirty = false;
 

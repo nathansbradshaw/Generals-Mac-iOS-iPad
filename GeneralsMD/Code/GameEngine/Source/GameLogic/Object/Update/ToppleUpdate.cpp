@@ -185,7 +185,9 @@ void ToppleUpdate::applyTopplingForce( const Coord3D* toppleDirection, Real topp
 	// yeah, it assumes the models are constructed appropriately, but is a cheap way
 	// of minimizing the problem. (srj)
 	Real curAngleX = normalizeAngle(getObject()->getOrientation());
-	Real toppleAngle = normalizeAngle(atan2(m_toppleDirection.y, m_toppleDirection.x));
+    // GeneralsX @bugfix Codex 09/10/2026 Float atan2 differs by one ULP on Apple/Android and changes the tree's deterministic fall rotation.
+    Real toppleAngle = normalizeAngle(static_cast<Real>(std::atan2(
+        static_cast<double>(m_toppleDirection.y), static_cast<double>(m_toppleDirection.x))));
 	if (d->m_toppleLeftOrRightOnly)
 	{
 		// it's a fence or such, and can only topple left or right, so pick the closest

@@ -2,6 +2,39 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "[Android] Build GeneralsXZH Online (no launch)",
+			"type": "process",
+			"command": "${workspaceFolder}/scripts/build/android/build-android-zh.sh",
+			"args": [
+				"--online"
+			],
+			"group": "build",
+			"presentation": {
+				"reveal": "always",
+				"focus": false,
+				"panel": "dedicated"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "[Android] Provision Online Account (no launch)",
+			"type": "process",
+			"command": "python3",
+			"args": [
+				"${workspaceFolder}/scripts/go-online/provision-android-online-account.py",
+				"--user-id",
+				"${input:androidOnlineUserId}",
+				"--name",
+				"${input:androidOnlineName}"
+			],
+			"presentation": {
+				"reveal": "always",
+				"focus": false,
+				"panel": "dedicated"
+			},
+			"problemMatcher": []
+		},
+		{
 			"label": "[Platform] Configure",
 			"type": "shell",
 			"icon": {
@@ -498,6 +531,20 @@
 				"focus": true
 			},
 			"problemMatcher": []
+		}
+	],
+	"inputs": [
+		{
+			"id": "androidOnlineUserId",
+			"type": "promptString",
+			"description": "Existing self-hosted Android test account ID",
+			"default": "34622"
+		},
+		{
+			"id": "androidOnlineName",
+			"type": "promptString",
+			"description": "Display name for that account",
+			"default": "friend1"
 		}
 	]
 }

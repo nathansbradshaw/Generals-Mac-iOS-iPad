@@ -1,0 +1,12 @@
+--- a/src/steamnetworkingsockets/clientlib/steamnetworkingsockets_p2p.cpp
++++ b/src/steamnetworkingsockets/clientlib/steamnetworkingsockets_p2p.cpp
+@@ -2772,7 +2772,8 @@
+ 			}
+ 
+ 			// Implicitly accept connection
+-			EResult eAcceptResult = pMatchingConnection->AcceptConnection( SteamNetworkingSockets_GetLocalTimestamp() );
++			// GeneralsX @bugfix Codex 09/10/2026 Implicit acceptance must finish the crypto handshake, like the public API.
++			EResult eAcceptResult = pMatchingConnection->APIAcceptConnection();
+ 			if ( eAcceptResult == k_EResultOK )
+ 			{
+ 

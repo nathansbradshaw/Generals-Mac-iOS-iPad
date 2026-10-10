@@ -185,7 +185,8 @@ static void FilterSoftwareVulkanICDs()
 static void FilterPipeWireOpenAL()
 {
 	// GeneralsX @bugfix Copilot 24/03/2026 PipeWire/OpenAL workaround is Linux-only; keep macOS CoreAudio backend selection untouched.
-	#if defined(__linux__)
+	// GeneralsX @bugfix Codex 09/10/2026 Android is Linux but needs its OpenSL/AAudio backends.
+	#if defined(__linux__) && !defined(__ANDROID__)
 	// Crash: alcOpenDevice() hits 'movaps %xmm1,0x26260(%rbx)' — SSE movaps requires
 	// 16-byte alignment; a misaligned ALCdevice struct faults regardless of backend.
 	// Disabling CPU extensions forces openal-soft to use scalar code that has no
@@ -279,6 +280,11 @@ int main(int argc, char* argv[])
 			// This prevents LLVM SIGSEGV crash during Vulkan driver enumeration
 			// Must be done here, not in SDL3GameEngine::init() which is too late
 			fprintf(stderr, "INFO: Initializing SDL3 video subsystem...\n");
+#if defined(__ANDROID__)
+			// GeneralsX @bugfix Codex 09/10/2026 Keep SDL's resizable Android
+			// window in landscape across Home/resume, matching the manifest.
+			SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+#endif
 			if (!SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
 				fprintf(stderr, "FATAL: Failed to initialize SDL3: %s\n", SDL_GetError());
 				return 1;
@@ -318,6 +324,66 @@ int main(int argc, char* argv[])
 			// Store window handle globally (cast SDL_Window* to HWND for compatibility)
 			ApplicationHWnd = (HWND)TheSDL3Window;
 			fprintf(stderr, "INFO: SDL3 window created successfully\n");
+#if defined(__ANDROID__) || (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
+		// GeneralsX @bugfix Codex 09/10/2026 Apply native aspect/resolution on Android too,
+		// so rendering and touch share a drawable without the default 4:3 viewport.
+		// Match the game's internal resolution to the phone screen's aspect ratio.
+		// Without this the engine runs its 4:3 default inside the 19.5:9 display:
+		// pillarboxed picture and a skewed window->game coordinate mapping. Height
+		// stays at the engine's 600px design baseline (UI layouts assume >= 600);
+		// width follows the real aspect. Injected as -xres/-yres argv entries so
+		// the normal command-line path applies them (user-passed flags still win
+		// because the parser lets later arguments override earlier ones... ours go
+		// last, so only add them if the user didn't pass explicit -xres/-yres).
+		{
+			bool userSetRes = false;
+			for (int i = 1; i < __argc; ++i) {
+				if (strcmp(__argv[i], "-xres") == 0 || strcmp(__argv[i], "-yres") == 0) {
+					userSetRes = true;
+					break;
+				}
+			}
+			// Use the pixel size of the high-density drawable: the game renders
+			// 1:1 into the native-resolution swapchain, and fonts/UI rescale via
+			// the engine's resolution-aware font scaling (GlobalLanguage).
+			int winW = 0, winH = 0;
+			SDL_GetWindowSizeInPixels(TheSDL3Window, &winW, &winH);
+#if defined(__ANDROID__)
+			// Android initially reports the area minus navigation bars. The native
+			// fullscreen surface reaches the display size after the first resize.
+			const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(TheSDL3Window));
+			if (mode && mode->w > 0 && mode->h > 0) {
+				winW = mode->w > mode->h ? mode->w : mode->h;
+				winH = mode->w > mode->h ? mode->h : mode->w;
+			}
+#endif
+			if (!userSetRes && winW > 0 && winH > 0 && winW > winH) {
+				static char xresVal[16], yresVal[16];
+				static char xresFlag[] = "-xres";
+				static char yresFlag[] = "-yres";
+				const int yres = winH;
+				int xres = winW;
+				xres &= ~1;  // keep it even
+				snprintf(xresVal, sizeof(xresVal), "%d", xres);
+				snprintf(yresVal, sizeof(yresVal), "%d", yres);
+
+				static char* newArgv[64];
+				int n = 0;
+				for (int i = 0; i < __argc && n < 59; ++i) {
+					newArgv[n++] = __argv[i];
+				}
+				newArgv[n++] = xresFlag;
+				newArgv[n++] = xresVal;
+				newArgv[n++] = yresFlag;
+				newArgv[n++] = yresVal;
+				newArgv[n] = nullptr;
+				__argv = newArgv;
+				__argc = n;
+				fprintf(stderr, "INFO: Mobile internal resolution set to %sx%s (window %dx%d)\n",
+				        xresVal, yresVal, winW, winH);
+			}
+		}
+#endif
 		}
 
 		// Call cross-platform game entry point

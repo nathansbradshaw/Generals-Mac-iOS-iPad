@@ -1288,11 +1288,11 @@ UnsignedInt GlobalData::generateExeCRC()
 	exeCRC.set(GENERALSMD_104_CD_EXE_CRC);
 	DEBUG_LOG(("Fake EXE CRC is 0x%8.8X", exeCRC.get()));
 
-#elif defined(__linux__)
-	// GeneralsX @bugfix BenderAI 18/02/2026
-	// On Linux, reading the entire 180MB+ binary for CRC is prohibitively slow
-	// and unnecessary. Instead, use version-based CRC which is fast and sufficient.
-	// Only compute CRC from version number below.
+	#elif defined(SAGE_GENERALS_ONLINE) || defined(__linux__)
+		// GeneralsX @bugfix BenderAI 13/07/2026 Use a platform-neutral executable compatibility CRC for GeneralsOnline cross-play.
+		// Native executable bytes necessarily differ between Windows, Linux, macOS,
+		// and iOS even when their gameplay code is compatible. Hash the shared game
+		// version and multiplayer scripts below; m_iniCRC separately protects INI data.
 
 #else
 	{

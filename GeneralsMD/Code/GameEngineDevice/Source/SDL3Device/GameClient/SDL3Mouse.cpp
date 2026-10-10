@@ -31,6 +31,9 @@
 #include "SDL3Device/GameClient/SDL3Mouse.h"
 #include <cstdio>
 #include <cstring>
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 
 // GeneralsX @bugfix felipebraz 18/02/2026 Include GameLogic for frame tracking
 #include "GameLogic/GameLogic.h"
@@ -412,6 +415,16 @@ void SDL3Mouse::reset(void)
 /**
  * Update mouse state (called per-frame)
  */
+// GeneralsX @feature Codex 09/10/2026 Describe touch capability through the existing input abstraction.
+Bool SDL3Mouse::hasTouchInput() const
+{
+#if defined(__ANDROID__) || (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
+	return TRUE;
+#else
+	return FALSE;
+#endif
+}
+
 void SDL3Mouse::update(void)
 {
 	// Call parent update (processes events, updates m_currMouse)

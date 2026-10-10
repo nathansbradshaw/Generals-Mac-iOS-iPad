@@ -34,6 +34,29 @@ Common command line parameters for `GeneralsX` (Generals) and `GeneralsXZH` (Zer
 | `-jobs <count>` | Number of parallel replay jobs | `./GeneralsXZH -jobs 4 -replay *.rep` |
 | `-headless` | Run without graphics (replay testing) | `./GeneralsXZH -headless -replay *.rep` |
 
+## Screen-free diagnostic environment variables
+
+These opt-in diagnostics default to off and do not require desktop input:
+
+| Variable | Behavior |
+|----------|----------|
+| `GENERALSX_HIDDEN_WINDOW=1` | Keep the desktop SDL window hidden while running the full renderer/network client. |
+| `GENERALSX_AUTOREADY=1` | Accept a joined NGMP lobby after the peer mesh connects. |
+| `GENERALSX_CRC_TRACE=/absolute/prefix` | Write labeled byte traces of existing CRC calculations through simulation frame 2100. |
+| `GENERALSX_SMOKE_COMMANDS=host` | Queue a worker at frame 300, move it at 900, and check displacement at 1500. One test per process. |
+| `GENERALSX_SMOKE_COMMANDS=surrender` | Run the same command test and surrender normally at frame 2100. |
+
+These hooks send real game commands; use disposable test lobbies and isolated
+user-data directories. Android's debug-only `ReplayTestActivity` and
+`OnlineTestActivity` select fixed replay/online tests; they are absent from
+release manifests. Use an emulator launched with `-no-window -no-audio` to
+avoid visible emulator windows. See [scripts/README.md](../../scripts/README.md#screen-free-multiplayer-diagnostics)
+for provisioning, trace retrieval, and comparison. With CRC tracing enabled,
+Android also captures native stdout in `files/generals-stderr.log` so replay
+completion is visible. Validate with complete retail data and loaded-object
+traces: a reduced data set can exit 0 with an empty world. Headless replay
+checks do not exercise graphics, touch input, or the online lobby flow.
+
 ## Common Combinations
 
 ### Quick Testing

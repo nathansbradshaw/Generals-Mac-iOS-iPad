@@ -119,17 +119,20 @@ void OnSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCallback_t
 			NetworkLog(ELogVerbosity::LOG_RELEASE, "[DC] Closing connection %lld", plrConnection.m_userID);
 
 			ServiceConfig& serviceConf = NGMP_OnlineServicesManager::GetInstance()->GetServiceConfig();
-			const int numSignallingAttempts = 3;
-			bool bShouldRetry = plrConnection.m_SignallingAttempts < numSignallingAttempts && serviceConf.retry_signalling;
+			const int numSignallingAttempts = SignallingRetryBudget::MaxAttempts;
+			bool bShouldRetry = plrConnection.m_SignallingRetry.CanStartAttempt() && serviceConf.retry_signalling;
 
 			bool bWasError = pInfo->m_info.m_eState == k_ESteamNetworkingConnectionState_ProblemDetectedLocally || pInfo->m_info.m_eEndReason != k_ESteamNetConnectionEnd_App_Generic;
+            // GeneralsX @bugfix Codex 09/10/2026 Terminal callbacks may erase this map entry.
+            const int64_t remoteUserID = plrConnection.m_userID;
+            const int signallingAttempts = plrConnection.m_SignallingRetry.GetAttempts();
 			plrConnection.SetDisconnected(bWasError, pMesh, bShouldRetry && bWasError);
 			
 			// the highest slot player, should leave. In most cases, this is the most recently joined player, but this may not be 100% accurate due to backfills.
 			// TODO_NGMP: In the future, we should pick the most recently joined by timestamp
 			if (bWasError) // only if it wasn't a clean disconnect (e.g. lobby leave)
 			{
-				NetworkLog(ELogVerbosity::LOG_RELEASE, "[STEAM NETWORKING][DISCONNECT HANDLER] Determined we didn't connect due to an error, Retrying: %d (currently at %d/%d attempts)", bShouldRetry, plrConnection.m_SignallingAttempts, numSignallingAttempts);
+				NetworkLog(ELogVerbosity::LOG_RELEASE, "[STEAM NETWORKING][DISCONNECT HANDLER] Determined we didn't connect due to an error, Retrying: %d (currently at %d/%d attempts)", bShouldRetry, signallingAttempts, numSignallingAttempts);
 				
 				// should we retry signaling?
 				if (bShouldRetry)
@@ -147,11 +150,11 @@ void OnSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCallback_t
 							// Behavior:
 							// disconnected slot userID is higher than ours, do nothing, they will signal
 							// disconnected slot userID is lower than ours, we signal
-							if ((myUserID > plrConnection.m_userID))
+							if ((myUserID > remoteUserID))
 							{
 								NetworkLog(ELogVerbosity::LOG_RELEASE, "[STEAM NETWORKING][DISCONNECT HANDLER] Send signal start request...");
 
-								pWS->SendData_RequestSignalling(plrConnection.m_userID);
+								pWS->SendData_RequestSignalling(remoteUserID);
 							}
 							else
 							{
@@ -174,7 +177,7 @@ void OnSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCallback_t
 					NGMP_OnlineServices_LobbyInterface* pLobbyInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();
 					if (pLobbyInterface != nullptr)
 					{
-						NetworkLog(ELogVerbosity::LOG_RELEASE, "[STEAM NETWORKING][DISCONNECT HANDLER] Performing local removal for user %lld from lobby due to failure to connect\n", plrConnection.m_userID);
+						NetworkLog(ELogVerbosity::LOG_RELEASE, "[STEAM NETWORKING][DISCONNECT HANDLER] Performing local removal for user %lld from lobby due to failure to connect\n", remoteUserID);
 						// Local copy to avoid TOCTOU race: check-then-use window
 						auto callbackCopy = pLobbyInterface->m_OnCannotConnectToLobbyCallback;
 						if (callbackCopy != nullptr)
@@ -671,18 +674,26 @@ NetworkMesh::NetworkMesh()
 	// GeneralsX @feature BenderAI 10/07/2026 Self-hosted deployments must not
 	// depend on the production GeneralsOnline STUN/TURN host.  A friend group
 	// can supply its LAN/VPN relay through these environment variables.
-	const char* defaultStunList = "stun.l.google.com:19302,stun1.l.google.com:19302,stun2.l.google.com:19302";
+	// GeneralsX @feature Codex 09/10/2026 Normal phone/desktop launches use
+    // their selected service's relay endpoints. Explicit developer env wins.
+    ServiceConfig& serviceConf = pOnlineServicesMgr->GetServiceConfig();
+    const char* defaultStunList = "stun.l.google.com:19302,stun1.l.google.com:19302,stun2.l.google.com:19302";
 	const char* envStunList = std::getenv("GENERALSX_ONLINE_STUN_SERVERS");
-	const char* stunList = envStunList != nullptr && envStunList[0] != '\0' ? envStunList : defaultStunList;
+	const char* stunList = envStunList != nullptr && envStunList[0] != '\0' ? envStunList
+        : (!serviceConf.stun_servers.empty() ? serviceConf.stun_servers.c_str() : defaultStunList);
 	SteamNetworkingUtils()->SetGlobalConfigValueString(k_ESteamNetworkingConfig_P2P_STUN_ServerList, stunList);
 
 	const char* defaultTurnList = "turn:turn.playgenerals.online:53?transport=udp,turn:turn.playgenerals.online:3478?transport=udp";
 	const char* envTurnList = std::getenv("GENERALSX_ONLINE_TURN_SERVERS");
-	const char* turnList = envTurnList != nullptr && envTurnList[0] != '\0' ? envTurnList : defaultTurnList;
+	const char* turnList = envTurnList != nullptr && envTurnList[0] != '\0' ? envTurnList
+        : (!serviceConf.turn_servers.empty() ? serviceConf.turn_servers.c_str() : defaultTurnList);
 	NetworkLog(ELogVerbosity::LOG_RELEASE, "[NGMP] ICE configured with STUN '%s' and TURN '%s'", stunList, turnList);
 
 	m_strTurnUsername = pLobbyInterface->GetLobbyTurnUsername();
 	m_strTurnToken = pLobbyInterface->GetLobbyTurnToken();
+    // GeneralsX @bugfix Codex 09/10/2026 Prove initialization ordering without disclosing relay credentials.
+    NetworkLog(ELogVerbosity::LOG_RELEASE, "[NGMP] Mesh relay credentials: username_present=%d token_present=%d",
+        !m_strTurnUsername.empty(), !m_strTurnToken.empty());
 
 	//const char* szUsername = "g04024f26713bae6e055295b6887b7007533f6c236534b725734b37e26ec15cd,g04024f26713bae6e055295b6887b7007533f6c236534b725734b37e26ec15cd";
 	//const char* szToken = "9ea6a5e60216c09a1fa7512987b2ce0514e3204f863f04f70fa870a100db740f,9ea6a5e60216c09a1fa7512987b2ce0514e3204f863f04f70fa870a100db740f";
@@ -696,8 +707,6 @@ NetworkMesh::NetworkMesh()
 	SteamNetworkingUtils()->SetGlobalConfigValueString(k_ESteamNetworkingConfig_P2P_TURN_ServerList, turnList);
 	SteamNetworkingUtils()->SetGlobalConfigValueString(k_ESteamNetworkingConfig_P2P_TURN_UserList, m_strTurnUsernameString.c_str());
 	SteamNetworkingUtils()->SetGlobalConfigValueString(k_ESteamNetworkingConfig_P2P_TURN_PassList, m_strTurnTokenString.c_str());
-
-	ServiceConfig& serviceConf = pOnlineServicesMgr->GetServiceConfig();
 
 	// Allow sharing of any kind of ICE address.
 	if (g_bForceRelay || serviceConf.relay_all_traffic)
@@ -855,6 +864,16 @@ void NetworkMesh::StartConnectionSignalling(const char* szMiddlewareID, int64_t 
 	// Thread safety: Lock connection map during access
 	std::lock_guard<std::recursive_mutex> lock(m_mapConnectionsMutex);
 
+    // GeneralsX @bugfix Codex 09/10/2026 Replacing PlayerConnection must not reset the retry limit.
+    // A terminal callback may erase PlayerConnection; keep the authoritative budget in the mesh.
+    SignallingRetryBudget& retryBudget = m_signallingRetryBudgets[remoteUserID];
+    if (!retryBudget.TryStartAttempt())
+    {
+        NetworkLog(ELogVerbosity::LOG_RELEASE, "[SIGNALLING] Attempt limit reached for user %lld (%d/%d)",
+            remoteUserID, retryBudget.GetAttempts(), SignallingRetryBudget::MaxAttempts);
+        return;
+    }
+
 	if (AnticheatPlugInterface::DoesACPluginProvideSecureGameTransport())
 	{
 		// TODO_EOS: if we already have a connection to this use, drop it, having a single-direction connection will break signalling
@@ -865,8 +884,8 @@ void NetworkMesh::StartConnectionSignalling(const char* szMiddlewareID, int64_t 
             std::lock_guard<std::recursive_mutex> lock(m_mapConnectionsMutex);
             m_mapConnections[remoteUserID] = PlayerConnection(remoteUserID, szMiddlewareID);
 
-            // add attempt
-            ++m_mapConnections[remoteUserID].m_SignallingAttempts;
+            // Preserve the budget across both transport implementations.
+            m_mapConnections[remoteUserID].m_SignallingRetry = retryBudget;
         }
 	}
 	else
@@ -967,8 +986,8 @@ void NetworkMesh::StartConnectionSignalling(const char* szMiddlewareID, int64_t 
             std::lock_guard<std::recursive_mutex> lock(m_mapConnectionsMutex);
             m_mapConnections[remoteUserID] = PlayerConnection(remoteUserID, hSteamConnection);
 
-            // add attempt
-            ++m_mapConnections[remoteUserID].m_SignallingAttempts;
+            // Preserve the budget across both transport implementations.
+            m_mapConnections[remoteUserID].m_SignallingRetry = retryBudget;
         }
 	}
 	
@@ -1037,6 +1056,7 @@ void NetworkMesh::Disconnect()
 
     // clear map
     m_mapConnections.clear();
+    m_signallingRetryBudgets.clear();
 
 	if (AnticheatPlugInterface::DoesACPluginProvideSecureGameTransport())
 	{
@@ -1068,18 +1088,25 @@ void NetworkMesh::Disconnect()
 
 void NetworkMesh::Tick()
 {
+    // GeneralsX @bugfix Codex 09/10/2026 A lobby callback can disconnect this retained mesh.
+    if (m_bDisconnected)
+        return;
 	if (!AnticheatPlugInterface::DoesACPluginProvideSecureGameTransport())
 	{
 		// Check for incoming signals, and dispatch them
 		if (m_pSignaling != nullptr)
 		{
 			m_pSignaling->Poll();
+            if (m_bDisconnected)
+                return;
 		}
 
 		// Check callbacks
 		if (SteamNetworkingSockets())
 		{
 			SteamNetworkingSockets()->RunCallbacks();
+            if (m_bDisconnected)
+                return;
 		}
 	}
 
@@ -1467,9 +1494,22 @@ std::string PlayerConnection::GetConnectionType()
 	return std::string(szBuf);
 }
 
+// GeneralsX @bugfix Codex 09/10/2026 Reset only after the transport confirms connectivity.
+void NetworkMesh::ResetSignallingRetry(int64_t userID)
+{
+    std::lock_guard<std::recursive_mutex> lock(m_mapConnectionsMutex);
+    m_signallingRetryBudgets[userID].ResetAfterConnected();
+}
+
 void PlayerConnection::UpdateState(EConnectionState newState, NetworkMesh* pOwningMesh)
 {
 	m_State = newState;
+    // GeneralsX @bugfix Codex 09/10/2026 A confirmed connection starts a fresh bounded recovery episode.
+    if (newState == EConnectionState::CONNECTED_DIRECT)
+    {
+        m_SignallingRetry.ResetAfterConnected();
+        pOwningMesh->ResetSignallingRetry(m_userID);
+    }
 	pOwningMesh->UpdateConnectivity(this);
 
 	NGMP_OnlineServices_LobbyInterface* pLobbyInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();

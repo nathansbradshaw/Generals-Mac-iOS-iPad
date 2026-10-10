@@ -1,0 +1,173 @@
+--- a/src/steamnetworkingsockets/clientlib/steamnetworkingsockets_ice_client.cpp
++++ b/src/steamnetworkingsockets/clientlib/steamnetworkingsockets_ice_client.cpp
+@@ -982,6 +982,14 @@
+ 
+ void CSteamNetworkingSocketsSTUNRequest::ReplyPacketReceived( const RecvPktInfo_t &info, const STUNHeader &header )
+ {
++    // GeneralsX @bugfix Codex 09/10/2026 TURN replies must match the contacted server and method.
++    const bool bTURN = m_nMessageType == k_nTURN_AllocateRequest
++        || m_nMessageType == k_nTURN_RefreshRequest || m_nMessageType == k_nTURN_CreatePermissionRequest;
++    if ( bTURN && ( info.m_adrFrom != m_remoteAddr
++        || ( header.m_nMessageType != ( m_nMessageType | 0x0100 )
++            && header.m_nMessageType != ( m_nMessageType | 0x0110 ) ) ) )
++        return;
++
+     // Parse attributes.  Drop packet if there is a problem.
+     CUtlVector< STUNAttribute > vecAttributes;
+     if ( !ParseSTUNAttributes( info, (const byte*)m_strPassword.c_str(), (uint32)m_strPassword.size(), &vecAttributes ) )
+@@ -990,7 +998,28 @@
+             "ICE: Dropping STUN response 0x%x from %s: attribute parse or integrity failure.\n",
+             m_nMessageType, CUtlNetAdrRender( m_remoteAddr ).String() );
+         return;
++    }
++
++    // Attributes appended after integrity are outside its authenticated prefix.
++    if ( bTURN )
++    {
++        bool integritySeen = false;
++        for ( int i = 0; i < vecAttributes.Count(); ++i )
++        {
++            const uint32 type = vecAttributes[i].m_nType;
++            const bool integrity = type == k_nSTUN_Attr_MessageIntegrity || type == k_nSTUN_Attr_MessageIntegrity_SHA256;
++            if ( integritySeen && !integrity && type != k_nSTUN_Attr_Fingerprint )
++                return;
++            integritySeen = integritySeen || integrity;
++        }
+     }
++
++    // RFC8489 permits unsigned401/438 challenges; authenticated successes require integrity.
++    // ParseSTUNAttributes already rejects any supplied, invalid integrity attribute.
++    if ( bTURN && !m_strPassword.empty() && header.m_nMessageType == ( m_nMessageType | 0x0100 )
++        && !FindAttributeOfType( vecAttributes.Base(), vecAttributes.Count(), k_nSTUN_Attr_MessageIntegrity )
++        && !FindAttributeOfType( vecAttributes.Base(), vecAttributes.Count(), k_nSTUN_Attr_MessageIntegrity_SHA256 ) )
++        return;
+ 
+     if ( header.m_nMessageType == k_nSTUN_BindingResponse )
+         ++TEST_ICE_ctr_binding_resp_recv;
+@@ -1969,6 +1998,33 @@
+     }
+ }
+ 
++// GeneralsX @bugfix Codex 09/10/2026 Renew only NONCE on a matched438 challenge, retaining realm and key.
++static bool GeneralsXHandleTURNStaleNonce( const RecvSTUNPktInfo_t &info, ICESessionInterface &intf )
++{
++    if ( !info.m_pHeader || intf.m_strTURNRealm.empty()
++        || info.m_usecNow < intf.m_usecTURNRetryAfter
++        || info.m_pHeader->m_nMessageType != ( info.m_pRequest->m_nMessageType | 0x0110 ) )
++        return false;
++    const STUNAttribute *err = FindAttributeOfType( info.m_pAttributes, info.m_nAttributes, k_nSTUN_Attr_ErrorCode );
++    const STUNAttribute *realm = FindAttributeOfType( info.m_pAttributes, info.m_nAttributes, k_nSTUN_Attr_Realm );
++    const STUNAttribute *nonce = FindAttributeOfType( info.m_pAttributes, info.m_nAttributes, k_nSTUN_Attr_Nonce );
++    if ( !err || err->m_nLength < 4 || !realm || !nonce || nonce->m_nLength == 0 || nonce->m_nLength > 763 )
++        return false;
++    const uint8 *errorBytes = reinterpret_cast<const uint8*>( err->m_pData );
++    if ( errorBytes[2] != 4 || errorBytes[3] != 38
++        || realm->m_nLength != intf.m_strTURNRealm.size()
++        || V_memcmp( realm->m_pData, intf.m_strTURNRealm.data(), realm->m_nLength ) != 0 )
++        return false;
++    std::string nextNonce( reinterpret_cast<const char*>( nonce->m_pData ), nonce->m_nLength );
++    if ( nextNonce.find( '\0' ) != std::string::npos || nextNonce == intf.m_strTURNNonce )
++        return false;
++    intf.m_strTURNNonce.swap( nextNonce );
++    intf.m_usecTURNRetryAfter = info.m_usecNow + k_nMillion;
++    SpewMsg( "ICE: TURN stale nonce438 accepted for method0x%x; retrying authenticated request\n",
++        info.m_pRequest->m_nMessageType );
++    return true;
++}
++
+ void CSteamNetworkingICESession::STUNRequestCallback_AllocateRelay( const RecvSTUNPktInfo_t &info )
+ {
+     ICESessionInterface * const pIntf = info.m_pRequest->m_pInterface;
+@@ -1980,9 +2036,16 @@
+ 
+     if ( info.m_pHeader != nullptr )
+     {
++        if ( GeneralsXHandleTURNStaleNonce( info, *pIntf ) )
++        {
++            pIntf->QueueAllocateRequest( info.m_pRequest->m_remoteAddr,
++                &CSteamNetworkingICESession::STUNRequestCallback_AllocateRelay, m_nEncoding );
++            return;
++        }
++
+         // Got a response -- check for XOR-RELAYED-ADDRESS (success).
+         const STUNAttribute *pRelayAttr = FindAttributeOfType( info.m_pAttributes, info.m_nAttributes, k_nTURN_Attr_XORRelayedAddress );
+-        if ( pRelayAttr != nullptr )
++        if ( info.m_pHeader->m_nMessageType == k_nTURN_AllocateSuccess && pRelayAttr != nullptr )
+         {
+             netadr_t addrRelayed;
+             if ( ReadXORAddressAttribute( pRelayAttr, info.m_pHeader, &addrRelayed ) )
+@@ -2075,13 +2138,23 @@
+ 
+     if ( info.m_pHeader != nullptr )
+     {
+-        // Refresh succeeded -- parse the returned LIFETIME and schedule the next one.
++        if ( GeneralsXHandleTURNStaleNonce( info, *pIntf ) )
++        {
++            pIntf->m_usecRefreshAfter = pIntf->m_usecTURNRetryAfter;
++            return;
++        }
+         const STUNAttribute *pLifetimeAttr = FindAttributeOfType( info.m_pAttributes, info.m_nAttributes, k_nTURN_Attr_Lifetime );
+-        if ( pLifetimeAttr != nullptr && pLifetimeAttr->m_nLength == 4 )
++        if ( info.m_pHeader->m_nMessageType == k_nTURN_RefreshSuccess
++            && pLifetimeAttr != nullptr && pLifetimeAttr->m_nLength == 4 && ntohl( pLifetimeAttr->m_pData[0] ) > 0 )
+         {
+             SteamNetworkingMicroseconds usecLifetime = (SteamNetworkingMicroseconds)ntohl( pLifetimeAttr->m_pData[0] ) * k_nMillion;
+             pIntf->m_usecRefreshAfter = info.m_usecNow + usecLifetime / 2;
++            pIntf->m_usecTURNRetryAfter = 0;
++            return;
+         }
++        // An error or malformed success never renews allocation lifetime or disables maintenance.
++        pIntf->m_usecTURNRetryAfter = info.m_usecNow + 5 * k_nMillion;
++        pIntf->m_usecRefreshAfter = pIntf->m_usecTURNRetryAfter;
+         return;
+     }
+ 
+@@ -2106,6 +2179,7 @@
+     pIntf->m_usecRefreshAfter  = 0;
+     pIntf->m_nTURNPermissionRevision = 0;
+     pIntf->m_usecPermissionRefreshAfter = 0;
++    pIntf->m_usecTURNRetryAfter = 0;
+     // Leave m_bRelayFailed = false so Think_DiscoverRelayCandidate retries.
+ }
+ 
+@@ -2117,6 +2191,10 @@
+         if ( !pIntf->m_addrTURNServer.IsValid() || pIntf->m_bRelayFailed )
+             continue;
+         if ( pIntf->m_pPendingSTUNRequest != nullptr )
++            continue;
++
++        // Back off all authenticated maintenance, including newly changed permission lists.
++        if ( usecNow < pIntf->m_usecTURNRetryAfter )
+             continue;
+ 
+         // Refresh takes priority over CreatePermission.
+@@ -2241,9 +2319,14 @@
+     // If more IPs arrived while the request was in flight, the revision will still be
+     // behind the session's current revision, and we'll send another CreatePermission.
+     pIntf->m_nTURNPermissionRevision = info.m_pRequest->m_nTURNPermissionRevision;
+-    // Renew successful permissions after240s; throttle authenticated error replies to one retry per5s.
+-    pIntf->m_usecPermissionRefreshAfter = info.m_usecNow
+-        + ( info.m_pHeader->m_nMessageType == k_nTURN_CreatePermissionSuccess ? 240 : 5 ) * k_nMillion;
++    if ( GeneralsXHandleTURNStaleNonce( info, *pIntf ) )
++    {
++        pIntf->m_usecPermissionRefreshAfter = pIntf->m_usecTURNRetryAfter;
++        return;
++    }
++    const bool success = info.m_pHeader->m_nMessageType == k_nTURN_CreatePermissionSuccess;
++    pIntf->m_usecTURNRetryAfter = success ? 0 : info.m_usecNow + 5 * k_nMillion;
++    pIntf->m_usecPermissionRefreshAfter = info.m_usecNow + ( success ? 240 : 5 ) * k_nMillion;
+ }
+ 
+ void CSteamNetworkingICESession::STUNRequestCallback_ServerReflexiveCandidate( const RecvSTUNPktInfo_t &info )
+--- a/src/steamnetworkingsockets/clientlib/steamnetworkingsockets_ice_client.h
++++ b/src/steamnetworkingsockets/clientlib/steamnetworkingsockets_ice_client.h
+@@ -120,6 +120,9 @@
+         // GeneralsX @bugfix Codex 09/10/2026 RFC8656 permissions expire after300s, independently of allocations.
+         SteamNetworkingMicroseconds m_usecPermissionRefreshAfter = 0;
+ 
++        // GeneralsX @bugfix Codex 09/10/2026 Bound stale-nonce retries across allocation and permission maintenance.
++        SteamNetworkingMicroseconds m_usecTURNRetryAfter = 0;
++
+         /// Send a packet through this interface to the destination remote address.
+         /// If relay address is non-zero, send via Send Indication to the TURN server
+         bool SendPacketGather( int nChunks, const iovec *pChunks, int cbPayload, const netadr_t &addrPeer, const netadr_t &addrRelay );

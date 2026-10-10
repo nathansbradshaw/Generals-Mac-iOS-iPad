@@ -1,4 +1,10 @@
-add_executable(z_generals WIN32)
+if(ANDROID)
+    # GeneralsX @build BenderAI 13/07/2026 Android's SDLActivity loads the
+    # native entry point from libmain.so rather than launching an executable.
+    add_library(z_generals SHARED)
+else()
+    add_executable(z_generals WIN32)
+endif()
 
 # Use a binary name that doesn't conflict with original game.
 # GeneralsX @build BenderAI 15/02/2026 Linux branding update
@@ -6,7 +12,11 @@ if("${CMAKE_SYSTEM}" MATCHES "Windows")
     set_target_properties(z_generals PROPERTIES OUTPUT_NAME "generalszh${RTS_BUILD_OUTPUT_SUFFIX}")
 else()
     # GeneralsX @build BenderAI 15/02/2026 Linux branding update
-    set_target_properties(z_generals PROPERTIES OUTPUT_NAME GeneralsXZH)
+    if(ANDROID)
+        set_target_properties(z_generals PROPERTIES OUTPUT_NAME main)
+    else()
+        set_target_properties(z_generals PROPERTIES OUTPUT_NAME GeneralsXZH)
+    endif()
 endif()
 
 # GeneralsX @build BenderAI 13/02/2026 Windows-specific libraries

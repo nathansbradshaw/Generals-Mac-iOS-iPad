@@ -1,0 +1,60 @@
+--- a/src/tier0/dbg.cpp
++++ b/src/tier0/dbg.cpp
+@@ -90,7 +90,7 @@
+ 	if (sysctl(mib, 4, &info, &size, NULL, 0) == -1)
+ 	    return false;
+ 	return ((info.p_psflags & PS_TRACED) != 0);
+-#elif IsLinux()
++#elif IsLinux() || IsAndroid()
+ 	static FILE *fp;
+ 	if ( !fp )
+ 	{
+--- a/src/tier1/netadr.cpp
++++ b/src/tier1/netadr.cpp
+@@ -660,7 +660,7 @@
+ 			}
+ 			auto *s = (struct sockaddr_in*)addr;
+ 			s->sin_family = AF_INET;
+-			s->sin_addr.s_addr = BigDWord( INADDR_BROADCAST );
++			s->sin_addr.s_addr = BigDWord( uint32( INADDR_BROADCAST ) );
+ 			s->sin_port = BigWord( m_usPort );
+ 			struct_size = sizeof(sockaddr_in);
+ 		}
+--- a/src/public/tier0/platform_sockets.h
++++ b/src/public/tier0/platform_sockets.h
+@@ -87,7 +87,7 @@
+ 	#include <poll.h>
+ 	#include <errno.h>
+ 
+-	#if !IsAndroid()
++	#if !IsAndroid() || __ANDROID_API__ >= 24
+ 		#include <ifaddrs.h>
+ 	#endif
+ 	#include <net/if.h>
+--- a/src/steamnetworkingsockets/clientlib/steamnetworkingsockets_socketthread.cpp
++++ b/src/steamnetworkingsockets/clientlib/steamnetworkingsockets_socketthread.cpp
+@@ -4003,7 +4003,14 @@
+ 	hints.ai_protocol = 0;
+ 
+ 	addrinfo *result = NULL;
++	// GeneralsX @bugfix Codex 08/10/2026 Bionic requires a socket type when resolving UDP services.
++#if IsAndroid()
++	hints.ai_flags = AI_ADDRCONFIG;
++	hints.ai_socktype = SOCK_DGRAM;
++	int nResult = getaddrinfo( pszHostname, pszPortStr, &hints, &result );
++#else
+ 	int nResult = getaddrinfo( pszHostname, pszPortStr, NULL, &result );
++#endif
+ 
+ 	if ( nResult != 0 )
+ 	{
+@@ -4221,7 +4228,8 @@
+     free( pAddrInfo );
+ 	return true;
+ 
+-#elif IsPosix() && !IsPlaystation() && !IsAndroid() && !IsNintendoSwitch()
++// GeneralsX @bugfix Codex 08/10/2026 Bionic provides getifaddrs from API 24 for ICE host candidates.
++#elif IsPosix() && !IsPlaystation() && (!IsAndroid() || __ANDROID_API__ >= 24) && !IsNintendoSwitch()
+ 
+ 	ifaddrs *pMyAddrInfo = NULL;
+ 	int r = getifaddrs( &pMyAddrInfo );

@@ -3,9 +3,9 @@
 
 #include "d3dx8core.h"
 
-// GeneralsX @build felipebraz 20/06/2025 GLI causes make_vec4 ambiguity with Apple Clang (GLM version mismatch).
-// On macOS, exclude GLI and use stub implementations for the surface scaling path.
-#ifndef __APPLE__
+// GeneralsX @build felipebraz 20/06/2025 GLI causes make_vec4 ambiguity with Apple and Android Clang (GLM version mismatch).
+// On Clang mobile platforms, exclude GLI and use the manual surface scaling path below.
+#if !defined(__APPLE__) && !defined(__ANDROID__)
 #include <gli/gli.hpp>
 #include <gli/generate_mipmaps.hpp>
 #endif
@@ -106,7 +106,7 @@ D3DXLoadSurfaceFromSurface(
 		return D3D_OK;
 	}
 
-#ifndef __APPLE__
+#if !defined(__APPLE__) && !defined(__ANDROID__)
 	// Pick a compatible format
 	gli::format imageFormat = gli::format::FORMAT_RGBA8_UNORM_PACK8;
 
@@ -149,7 +149,7 @@ D3DXLoadSurfaceFromSurface(
 
 	return D3D_OK;
 #else
-	// GeneralsX @bugfix BenderAI 07/03/2026 macOS: GLI not available due to Apple Clang ambiguity.
+	// GeneralsX @bugfix BenderAI 07/03/2026 Apple/Android: GLI not available due to Clang ambiguity.
 	// Implement manual box filter downsampling for mipmap generation.
 	// This is critical for terrain textures - without mipmaps, terrain renders black.
 	if (descDest.Width == descSrc.Width / 2 && descDest.Height == descSrc.Height / 2)

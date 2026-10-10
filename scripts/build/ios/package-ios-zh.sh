@@ -154,6 +154,12 @@ if [[ "${DEV_MODE}" != "1" ]]; then
     done
     cp "${CONFIG_SRC}/dxvk.conf" "${APP}/GameData/dxvk.conf"
     cp "${CONFIG_SRC}/Options.ini" "${APP}/GameData/DefaultOptions.ini"
+
+    # GeneralsX @bugfix BenderAI 12/07/2026 Retail/staged data can contain an
+    # older loose menu override. Always package the UI paired with this binary.
+    REPO_EXTRAS_MENU="${PROJECT_ROOT}/GeneralsZH/Data/Window/Menus/ExtrasMenu.wnd"
+    mkdir -p "${APP}/GameData/Window/Menus"
+    cp "${REPO_EXTRAS_MENU}" "${APP}/GameData/Window/Menus/ExtrasMenu.wnd"
     echo "    bundled $(du -sh "${APP}/GameData" | cut -f1) of game data"
 fi
 
@@ -193,9 +199,11 @@ if [[ "${DO_INSTALL}" == "1" ]]; then
     # Match the identifier by its UUID shape rather than column position: device
     # Name/Model can contain spaces and parens (e.g. "iPad mini (6th generation)"),
     # which breaks any fixed-field-index parse of this table.
-    DEVICE_ID=$(xcrun devicectl list devices 2>/dev/null | grep -i connected | grep -oE '[0-9A-F-]{36}' | head -1)
+    # GeneralsX @bugfix BenderAI 12/07/2026 Accept newer CoreDevice's
+    # "available (paired)" state as well as the older "connected" state.
+    DEVICE_ID=$(xcrun devicectl list devices 2>/dev/null | grep -Ei 'connected|available \(paired\)' | grep -oE '[0-9A-Fa-f-]{36}' | head -1)
     if [[ -z "${DEVICE_ID}" ]]; then
-        echo "ERROR: no connected device found (xcrun devicectl list devices)"
+        echo "ERROR: no available paired device found (xcrun devicectl list devices)"
         exit 1
     fi
     xcrun devicectl device install app --device "${DEVICE_ID}" "${APP}"

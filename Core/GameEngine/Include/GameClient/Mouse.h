@@ -280,6 +280,8 @@ public:
 	virtual void update() override;  ///< update the state of the mouse position and buttons
 	virtual void initCursorResources()=0;	///< needed so Win32 cursors can load resources before D3D device created.
 
+	// GeneralsX @feature Codex 09/10/2026 Let menus account for input devices without hover.
+	virtual Bool hasTouchInput() const { return FALSE; }
 	virtual void createStreamMessages();  /**< given state of device, create
 																									 messages and put them on the
 																									 stream for the raw state. */

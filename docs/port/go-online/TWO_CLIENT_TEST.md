@@ -56,10 +56,14 @@ bash scripts/build/macos/deploy-macos-zh.sh             # deploys binary + dylib
 No launcher / no browser. The client reads a **pre-minted refresh token** from
 the `GENERALSX_ONLINE_REFRESH_TOKEN` env var, POSTs `LoginWithToken`, and gets a
 session token + websocket URI back. Mint a token per account with the backend's
-JWT signing key (`JwtSettings.Key` from the service `appsettings.json`):
+JWT signing key. **The key is a secret — never put it in the repo.** Keep it in a
+gitignored `.env` (see `.env.example`); it must match the backend's
+`JwtSettings__Key` (`~/go-services/.env`).
 
 ```sh
-KEY="43a0f039d4469a2b23e1bd8dfd54a69c5e25e8cd581226b36591eb587c75dfbb1247b76a3ab20870bc04ae8f181d215d"
+# .env defines GENERALSX_ONLINE_JWT_KEY=<same value as the backend's JwtSettings__Key>
+set -a; source ./.env; set +a
+KEY="$GENERALSX_ONLINE_JWT_KEY"
 python3 scripts/go-online/mint_refresh_token.py --user-id 34621 --name nathan --key "$KEY"
 ```
 
@@ -87,7 +91,9 @@ account token and its own log. `run.sh` is the wrapper that sets the dylib env.
 
 ```sh
 cd ~/GeneralsX/GeneralsZH
-KEY="43a0f039d4469a2b23e1bd8dfd54a69c5e25e8cd581226b36591eb587c75dfbb1247b76a3ab20870bc04ae8f181d215d"
+# KEY from the gitignored .env (must match the backend's JwtSettings__Key):
+set -a; source ~/Documents/GitHub/GeneralsX/.env; set +a
+KEY="$GENERALSX_ONLINE_JWT_KEY"
 
 # --- Client A: HOST (nathan) ---
 export GENERALSX_ONLINE_REFRESH_TOKEN=$(python3 ~/Documents/GitHub/GeneralsX/scripts/go-online/mint_refresh_token.py --user-id 34621 --name nathan --key "$KEY")

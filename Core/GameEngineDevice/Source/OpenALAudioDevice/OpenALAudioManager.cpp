@@ -1575,6 +1575,25 @@ void OpenALAudioManager::openDevice(void)
 }
 
 //-------------------------------------------------------------------------------------------------
+// GeneralsX @bugfix Codex 09/10/2026 Stop background output while preserving
+// source offsets and an existing game-menu pause. OpenAL Soft supplies this
+// extension on our Android backend; SDL audio lifecycle hooks do not cover it.
+void OpenALAudioManager::setAppSuspended(bool suspended)
+{
+	if (!m_alcDevice || m_appSuspended == suspended)
+		return;
+	if (!alcIsExtensionPresent(m_alcDevice, "ALC_SOFT_pause_device"))
+		return;
+	typedef void (ALC_APIENTRY *DeviceAction)(ALCdevice *);
+	DeviceAction action = reinterpret_cast<DeviceAction>(alcGetProcAddress(
+		m_alcDevice, suspended ? "alcDevicePauseSOFT" : "alcDeviceResumeSOFT"));
+	if (action) {
+		action(m_alcDevice);
+		m_appSuspended = suspended;
+		fprintf(stderr, "[GeneralsX] Audio device appSuspended=%d\n", suspended);
+	}
+}
+
 void OpenALAudioManager::closeDevice(void)
 {
 	unselectProvider();

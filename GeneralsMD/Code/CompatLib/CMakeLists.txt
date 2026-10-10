@@ -74,8 +74,8 @@ else()
     if(NOT dxvk_SOURCE_DIR)
         message(FATAL_ERROR "DXVK not fetched! Ensure SAGE_USE_DX8=OFF and cmake/dx8.cmake was included")
     endif()
-    if(APPLE)
-        # macOS: DXVK built from git source -- Wine-style include/native layout
+    if(APPLE OR ANDROID)
+        # macOS/Android: DXVK built from git source -- Wine-style include/native layout
         target_include_directories(d3d8lib INTERFACE
             ${dxvk_SOURCE_DIR}/include/native
             ${dxvk_SOURCE_DIR}/include/native/windows
@@ -92,7 +92,7 @@ else()
     # (_deps/dxvk-build-macos/src/d3d*/), not in ${dxvk_SOURCE_DIR}/lib — that path does not exist.
     # Linux prebuilt DXVK native package does have a lib/ dir, so the guard is macOS-only.
     # Passing a non-existent -L path produces: ld: warning: search path '.../dxvk-src/lib' not found
-    if(NOT APPLE)
+    if(NOT APPLE AND NOT ANDROID)
         target_link_directories(d3d8lib INTERFACE
             ${dxvk_SOURCE_DIR}/lib
         )

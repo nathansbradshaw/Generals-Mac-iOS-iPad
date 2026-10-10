@@ -44,6 +44,9 @@
 #include "GameClient/KeyDefs.h"
 #include "GameClient/WindowLayout.h"
 #include "GameClient/Display.h"
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 #if defined(SAGE_GENERALS_ONLINE)
 #include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
 #include "GameNetwork/GeneralsOnline/HTTP/HTTPManager.h"
@@ -56,6 +59,9 @@ static NameKeyType sliderMinCameraHeightID = NAMEKEY_INVALID;
 static NameKeyType sliderCameraPitchID = NAMEKEY_INVALID;
 static NameKeyType sliderScrollSpeedID = NAMEKEY_INVALID;
 static NameKeyType sliderDrawDistanceID = NAMEKEY_INVALID;
+static NameKeyType buttonBackID = NAMEKEY_INVALID;
+static NameKeyType buttonDefaultsID = NAMEKEY_INVALID;
+static NameKeyType buttonAcceptID = NAMEKEY_INVALID;
 
 static GameWindow *sliderMaxCameraHeight = nullptr;
 static GameWindow *sliderMinCameraHeight = nullptr;
@@ -84,6 +90,34 @@ static const Int SLIDER_SCROLL_SPEED_MAX = 200;
 static const Int SLIDER_DRAW_DISTANCE_MIN = 100;
 static const Int SLIDER_DRAW_DISTANCE_MAX = 200;
 
+// GeneralsX @bugfix nathanbradshaw 13/07/2026 Route custom-WND button
+// selections directly into the menu while preserving normal gadget lifecycle.
+static WindowMsgHandledType ExtrasMenuButtonSystem(GameWindow *window, UnsignedInt msg,
+	WindowMsgData mData1, WindowMsgData mData2)
+{
+	if (msg == GBM_SELECTED || msg == GBM_SELECTED_RIGHT) {
+		return ExtrasMenuSystem(window->winGetParent(), msg, mData1, mData2);
+	}
+
+	return GadgetPushButtonSystem(window, msg, mData1, mData2);
+}
+
+static WindowMsgHandledType ExtrasMenuButtonInput(GameWindow *window, UnsignedInt msg,
+	WindowMsgData mData1, WindowMsgData mData2)
+{
+	return GadgetPushButtonInput(window, msg, mData1, mData2);
+}
+
+static void bindExtrasButton(NameKeyType buttonID)
+{
+	GameWindow *button = TheWindowManager->winGetWindowFromId(nullptr, buttonID);
+	if (button) {
+		button->winSetOwner(button);
+		button->winSetInputFunc(ExtrasMenuButtonInput);
+		button->winSetSystemFunc(ExtrasMenuButtonSystem);
+	}
+}
+
 //-------------------------------------------------------------------------------------------------
 void ExtrasMenuInit(WindowLayout *layout, void *userData)
 {
@@ -92,9 +126,25 @@ void ExtrasMenuInit(WindowLayout *layout, void *userData)
 	sliderCameraPitchID = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:SliderCameraPitch");
 	sliderScrollSpeedID = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:SliderScrollSpeed");
 	sliderDrawDistanceID = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:SliderDrawDistance");
+	buttonBackID = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:ButtonBack");
+	buttonDefaultsID = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:ButtonDefaults");
+	buttonAcceptID = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:ButtonAccept");
 #if defined(SAGE_GENERALS_ONLINE)
 	textEntryOnlineServerID = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:TextEntryOnlineServer");
 	buttonTestOnlineServerID = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:ButtonTestOnlineServer");
+#endif
+
+	NameKeyType parentID = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:ExtrasMenuParent");
+	GameWindow *parent = TheWindowManager->winGetWindowFromId(nullptr, parentID);
+	if (parent) {
+		parent->winSetSystemFunc(ExtrasMenuSystem);
+		parent->winSetInputFunc(ExtrasMenuInput);
+	}
+	bindExtrasButton(buttonBackID);
+	bindExtrasButton(buttonDefaultsID);
+	bindExtrasButton(buttonAcceptID);
+#if defined(SAGE_GENERALS_ONLINE)
+	bindExtrasButton(buttonTestOnlineServerID);
 #endif
 
 	sliderMaxCameraHeight = TheWindowManager->winGetWindowFromId(nullptr, sliderMaxCameraHeightID);
@@ -131,8 +181,17 @@ void ExtrasMenuInit(WindowLayout *layout, void *userData)
 	}
 #if defined(SAGE_GENERALS_ONLINE)
 	if (textEntryOnlineServer) {
+		std::string serverURLValue = NGMP_OnlineServicesManager::Settings.Network_GetServiceURL();
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+		// GeneralsX @tweak nathanbradshaw 12/07/2026 Seed the physical-device
+		// setup with Nathan's current LAN GeneralsOnline endpoint.
+		if (serverURLValue.empty() ||
+			serverURLValue == "https://localhost:9000/env/prod/contract/1" ||
+			serverURLValue == "http://localhost:9000/env/prod/contract/1")
+			serverURLValue = "http://192.168.1.140:9000/env/prod/contract/1";
+#endif
 		UnicodeString serverURL;
-		serverURL.translate(NGMP_OnlineServicesManager::Settings.Network_GetServiceURL().c_str());
+		serverURL.translate(serverURLValue.c_str());
 		GadgetTextEntrySetText(textEntryOnlineServer, serverURL);
 	}
 #else
@@ -172,6 +231,12 @@ void ExtrasMenuShutdown(WindowLayout *layout, void *userData)
 		delete pref;
 		pref = nullptr;
 	}
+
+	// GeneralsX @bugfix nathanbradshaw 13/07/2026 Complete the shell pop after
+	// cleanup. Without this notification, Back and Apply leave the shell stuck
+	// in a pending-pop state and the Extra Options layout remains visible.
+	layout->hide(TRUE);
+	TheShell->shutdownComplete(layout);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -252,8 +317,13 @@ static void setDefaults()
 		GadgetSliderSetPosition(sliderDrawDistance, 105);
 #if defined(SAGE_GENERALS_ONLINE)
 	if (textEntryOnlineServer) {
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+		GadgetTextEntrySetText(textEntryOnlineServer,
+			UnicodeString(L"http://192.168.1.140:9000/env/prod/contract/1"));
+#else
 		GadgetTextEntrySetText(textEntryOnlineServer,
 			UnicodeString(L"https://localhost:9000/env/prod/contract/1"));
+#endif
 	}
 #endif
 }
@@ -311,21 +381,12 @@ static void testOnlineServer()
 
 //-------------------------------------------------------------------------------------------------
 WindowMsgHandledType ExtrasMenuSystem(GameWindow *window, UnsignedInt msg,
-																				WindowMsgData mData1, WindowMsgData mData2)
+																WindowMsgData mData1, WindowMsgData mData2)
 {
-	static NameKeyType buttonBack = NAMEKEY_INVALID;
-	static NameKeyType buttonDefaults = NAMEKEY_INVALID;
-	static NameKeyType buttonAccept = NAMEKEY_INVALID;
-
 	switch (msg) {
 
 		case GWM_CREATE:
-		{
-			buttonBack = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:ButtonBack");
-			buttonDefaults = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:ButtonDefaults");
-			buttonAccept = TheNameKeyGenerator->nameToKey("ExtrasMenu.wnd:ButtonAccept");
 			break;
-		}
 
 		case GWM_DESTROY:
 			break;
@@ -341,11 +402,10 @@ WindowMsgHandledType ExtrasMenuSystem(GameWindow *window, UnsignedInt msg,
 		{
 			GameWindow *control = (GameWindow *)mData1;
 			Int controlID = control->winGetWindowId();
-
-			if (controlID == buttonBack) {
+			if (controlID == buttonBackID) {
 				TheShell->pop();
 			}
-			else if (controlID == buttonAccept) {
+			else if (controlID == buttonAcceptID) {
 				if (!saveExtras())
 					break;
 				if (pref) {
@@ -353,7 +413,7 @@ WindowMsgHandledType ExtrasMenuSystem(GameWindow *window, UnsignedInt msg,
 				}
 				TheShell->pop();
 			}
-			else if (controlID == buttonDefaults) {
+			else if (controlID == buttonDefaultsID) {
 				setDefaults();
 			}
 #if defined(SAGE_GENERALS_ONLINE)

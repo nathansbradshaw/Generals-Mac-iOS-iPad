@@ -54,6 +54,7 @@
 #include "GameClient/GadgetComboBox.h"
 #include "GameClient/GadgetRadioButton.h"
 #include "GameClient/GadgetSlider.h"
+#include "GameClient/GadgetPushButton.h"
 #include "GameClient/HeaderTemplate.h"
 #include "GameClient/Shell.h"
 #include "GameClient/KeyDefs.h"
@@ -76,6 +77,10 @@
 
 #include "ww3d.h"
 #include "texturefilter.h"
+
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 
 // This is for non-RC builds only!!!
 #define VERBOSE_VERSION L"Release"
@@ -1543,8 +1548,18 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 			buttonAccept = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonAccept" );
 			buttonKeyboardOptionsMenu = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonKeyboardOptions" );
 
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+			// GeneralsX @feature BenderAI 12/07/2026 The iOS retail WND has no
+			// Keyboard Options control, and dynamic coordinates resolve inside a
+			// clipped child panel. Reuse the guaranteed bottom-row Defaults button.
+			GameWindow *defaultsButton = TheWindowManager->winGetWindowFromId(window, buttonDefaults);
+			if (defaultsButton)
+				GadgetButtonSetText(defaultsButton, UnicodeString(L"Extras"));
+#endif
+
 			// GeneralsX @feature fbraz3 08/06/2026 Create Extras button dynamically
 			// (OptionsMenu.wnd in WindowZH.big has no ButtonExtras, so we add it at runtime)
+#if !defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE
 			{
 				GameWindow *backBtn = TheWindowManager->winGetWindowFromId(window, buttonBack);
 				if (backBtn) {
@@ -1564,9 +1579,24 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 						buttonExtrasMenu = TheNameKeyGenerator->nameToKey("OptionsMenu.wnd:ButtonExtras");
 						extrasBtn->winSetWindowId(buttonExtrasMenu);
 						extrasBtn->winSetSystemFunc(OptionsMenuSystem);
+						// GeneralsX @bugfix BenderAI 12/07/2026 Dynamic buttons do
+						// not inherit the retail WND palette. Give Extras explicit
+						// visuals so it remains visible on iOS and desktop renderers.
+						const Color white = GameMakeColor(255, 255, 255, 255);
+						const Color black = GameMakeColor(0, 0, 0, 255);
+						extrasBtn->winSetEnabledColor(0, GameMakeColor(0, 64, 128, 255));
+						extrasBtn->winSetEnabledBorderColor(0, white);
+						extrasBtn->winSetHiliteColor(0, GameMakeColor(0, 112, 224, 255));
+						extrasBtn->winSetHiliteBorderColor(0, white);
+						extrasBtn->winSetDisabledColor(0, GameMakeColor(48, 48, 48, 255));
+						extrasBtn->winSetDisabledBorderColor(0, GameMakeColor(128, 128, 128, 255));
+						extrasBtn->winSetEnabledTextColors(white, black);
+						extrasBtn->winSetHiliteTextColors(white, black);
+						extrasBtn->winSetDisabledTextColors(GameMakeColor(160, 160, 160, 255), black);
 					}
 				}
 			}
+#endif
 
 			break;
 
@@ -1671,7 +1701,11 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 			}
 			else if (controlID == buttonDefaults )
 			{
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+				TheShell->push( "Menus/ExtrasMenu.wnd" );
+#else
 				setDefaults();
+#endif
 			}
 			else if (controlID == ButtonAdvancedAcceptID )
 			{
@@ -1684,7 +1718,11 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 			}
 			else if ( controlID == buttonKeyboardOptionsMenu )
 			{
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+				TheShell->push( "Menus/ExtrasMenu.wnd" );
+#else
 				TheShell->push( "Menus/KeyboardOptionsMenu.wnd" );
+#endif
 			}
 			else if ( controlID == buttonExtrasMenu )
 			{

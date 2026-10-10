@@ -944,6 +944,11 @@ bool DX8Wrapper::Reset_Device(bool reload_assets)
 		DX8TextureManagerClass::Release_Textures();
 		SHD_SHUTDOWN_SHADERS;
 
+		// GeneralsX @bugfix Codex 09/10/2026 Release cached target references
+		// before Reset. Early Android portrait-to-landscape resize otherwise
+		// restores the old portrait backbuffer after an effect RTT pass.
+		Set_Render_Target((IDirect3DSurface8 *)nullptr);
+
 		// Reset frame count to reflect the flipping chain being reset by Reset()
 		FrameCount = 0;
 
@@ -1339,7 +1344,12 @@ bool DX8Wrapper::Set_Render_Device(int dev, int width, int height, int bits, int
 	** - if in windowed mode, the backbuffer must use the current display format.
 	** - the depth buffer must use
 	*/
-	if (IsWindowed) {
+	// GeneralsX @bugfix Codex 09/10/2026 SDL fullscreen still uses windowed D3D
+	// presentation. Query the adapter format instead of searching for the game
+	// resolution among physical display modes; phones have no 1024x768 mode.
+	// An UNKNOWN adapter format made every capability query fail and stripped
+	// alpha from all DDS textures during the fallback to RGB565.
+	if (_PresentParameters.Windowed) {
 
 		D3DDISPLAYMODE desktop_mode;
 		::ZeroMemory(&desktop_mode, sizeof(D3DDISPLAYMODE));
@@ -1406,6 +1416,19 @@ bool DX8Wrapper::Set_Render_Device(int dev, int width, int height, int bits, int
 			_PresentParameters.AutoDepthStencilFormat=D3DFMT_D16;
 		}
 	}
+
+#if defined(__ANDROID__)
+	// GeneralsX @bugfix Codex 13/07/2026 GFXStream rejects the initial D32
+	// (depth-only) device after creating its Android Vulkan surface, and the
+	// legacy D16 retry then collides with that still-owned native window, so we
+	// pin the depth-stencil format up front to force a single clean device
+	// creation instead of the D32->retry dance.
+	// GeneralsX @bugfix Opus 14/07/2026 Keep this stencil-free on Android.
+	// GFXStream corrupts the legacy stencil-volume renderer into large black
+	// extruded polygons; projected shadows are independently suppressed in
+	// W3DProjectedShadowManager::renderShadows for the same backend limitation.
+	_PresentParameters.AutoDepthStencilFormat = D3DFMT_D16;
+#endif
 
 	/*
 	** Check the devices support for the requested MSAA mode then setup the multi sample type
@@ -2586,6 +2609,29 @@ void DX8Wrapper::Apply_Render_State_Changes()
 		if (render_state_changed&mask)
 		{
 			SNAPSHOT_SAY(("DX8 - apply texture %d (%s)",i,render_state.Textures[i] ? render_state.Textures[i]->Get_Full_Path().str() : "null"));
+
+#if defined(__ANDROID__)
+			// GeneralsX @bugfix Codex 14/07/2026 Trace the actual alpha-card
+			// textures and requested legacy shader state while diagnosing the
+			// Android renderer. Keep this at the shared draw-state boundary so
+			// projected decals, particles, meshes, and terrain bibs are covered.
+			// GeneralsX @performance Codex 09/10/2026 Keep per-draw alpha tracing opt-in; normal play wrote gigabytes of diagnostics.
+			static const bool traceAndroidAlpha = getenv("GENERALSX_TRACE_ANDROID_ALPHA") != nullptr;
+			if (traceAndroidAlpha && i == 0 && render_state.Textures[i] &&
+				(render_state.shader.Get_Alpha_Test() == ShaderClass::ALPHATEST_ENABLE ||
+				 render_state.shader.Get_Dst_Blend_Func() != ShaderClass::DSTBLEND_ZERO)) {
+				fprintf(stderr,
+					"[GX-ANDROID-ALPHA] texture=%s id=%u size=%dx%d src=%u dst=%u alphaTest=%u shader=0x%08x\n",
+					render_state.Textures[i]->Get_Full_Path().str(),
+					render_state.Textures[i]->Get_ID(),
+					render_state.Textures[i]->Get_Width(),
+					render_state.Textures[i]->Get_Height(),
+					(unsigned)render_state.shader.Get_Src_Blend_Func(),
+					(unsigned)render_state.shader.Get_Dst_Blend_Func(),
+					(unsigned)render_state.shader.Get_Alpha_Test(),
+					(unsigned)render_state.shader.Get_Bits());
+			}
+#endif
 
 			if (render_state.Textures[i])
 			{

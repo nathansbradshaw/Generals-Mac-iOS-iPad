@@ -157,13 +157,15 @@ static WWINLINE float		Atan(float x)
 #endif
 }
 
+// GeneralsX @bugfix Codex 08/10/2026 Apple/Bionic float libm rounds differently.
+// Evaluate trig in double and round once to float for cross-platform simulation.
 static WWINLINE float		Atan2(float y, float x) 
 { 
 #ifdef USE_DETERMINISTIC_MATH
 	// TODO: return GameMath::Atan2(y, x);
-	return static_cast<float>(atan2(y, x)); 
+	return static_cast<float>(atan2(static_cast<double>(y), static_cast<double>(x)));
 #else
-	return static_cast<float>(atan2(y, x)); 
+	return static_cast<float>(atan2(static_cast<double>(y), static_cast<double>(x)));
 #endif
 }
 
@@ -471,7 +473,8 @@ WWINLINE float WWMath::Cos(float val)
 #else
 WWINLINE float WWMath::Cos(float val)
 {
-	return cosf(val);
+	// GeneralsX @bugfix Codex 08/10/2026 Match the shared cross-play trig path.
+	return static_cast<float>(cos(static_cast<double>(val)));
 }
 #endif
 
@@ -493,7 +496,8 @@ WWINLINE float WWMath::Sin(float val)
 #else
 WWINLINE float WWMath::Sin(float val)
 {
-	return sinf(val);
+	// GeneralsX @bugfix Codex 08/10/2026 Match the shared cross-play trig path.
+	return static_cast<float>(sin(static_cast<double>(val)));
 }
 #endif
 

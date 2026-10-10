@@ -1,6 +1,7 @@
 #pragma once
 
 #include "NGMP_include.h"
+#include "SignallingRetry.h"
 #ifdef _WIN32
 #include <ws2ipdef.h>
 #endif
@@ -99,7 +100,7 @@ public:
 	
 	int64_t pingSent = -1;
 
-	int m_SignallingAttempts = 0;
+	SignallingRetryBudget m_SignallingRetry;
 	
 	int GetLatency();
 	int GetJitter();
@@ -200,6 +201,8 @@ public:
 
 	HSteamListenSocket GetListenSocketHandle() const { return m_hListenSock; }
 
+	void ResetSignallingRetry(int64_t userID);
+
 	std::map<int64_t, PlayerConnection>& GetAllConnections()
 	{
 		return m_mapConnections;
@@ -218,6 +221,8 @@ public:
 
 private:
 	std::map<int64_t, PlayerConnection> m_mapConnections;
+	// GeneralsX @bugfix Codex 09/10/2026 Keep terminal budgets after callbacks erase player connections.
+	std::map<int64_t, SignallingRetryBudget> m_signallingRetryBudgets;
 	mutable std::recursive_mutex m_mapConnectionsMutex;  // Synchronizes access to m_mapConnections
 
 	ISignalingClient* m_pSignaling = nullptr;

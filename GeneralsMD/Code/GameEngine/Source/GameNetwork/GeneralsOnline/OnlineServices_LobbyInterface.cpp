@@ -636,6 +636,14 @@ bool NGMP_OnlineServices_LobbyInterface::IsHost()
 }
 
 
+// GeneralsX @bugfix Codex 09/10/2026 WSS can precede both the join HTTP response and menu callbacks.
+void NGMP_OnlineServices_LobbyInterface::QueueConnectionSignalling(int64_t userID, const std::string& middlewareID, uint16_t preferredPort)
+{
+    const bool queued = m_pendingLobbySignalling.Queue(userID, middlewareID, preferredPort);
+    NetworkLog(ELogVerbosity::LOG_RELEASE, "[NETWORK_CONNECTION_START_SIGNALLING] %s peer %lld (pending=%u)",
+        queued ? "Queued" : "Ignored", static_cast<long long>(userID), static_cast<unsigned>(m_pendingLobbySignalling.Size()));
+}
+
 void NGMP_OnlineServices_LobbyInterface::Tick()
 {
 	// cheats
@@ -678,11 +686,34 @@ void NGMP_OnlineServices_LobbyInterface::Tick()
 	}
 #endif
 
-	if (m_pLobbyMesh != nullptr)
-	{
-		m_pLobbyMesh->Flush();
-		m_pLobbyMesh->Tick();
-	}
+    // GeneralsX @bugfix Codex 09/10/2026 Terminal callbacks can leave the lobby during Tick.
+    const std::shared_ptr<NetworkMesh> meshForTick = m_pLobbyMesh;
+    if (meshForTick)
+    {
+        // Readiness persists when the setup menu removes its debug callbacks at game start.
+        if (meshForTick->m_cbOnConnected)
+            m_bSignallingCallbacksReady = true;
+        const bool dispatchReady = m_bSignallingCallbacksReady && IsInLobby()
+            && !m_strTURNUsername.empty() && !m_strTURNToken.empty();
+        const auto readyPeers = m_pendingLobbySignalling.TakeReady(dispatchReady, [this](int64_t userID)
+            {
+                auto* auth = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
+                if (!auth || userID == auth->GetUserID())
+                    return false;
+                return std::any_of(m_CurrentLobby.members.begin(), m_CurrentLobby.members.end(),
+                    [userID](const LobbyMemberEntry& member) { return member.user_id == userID; });
+            });
+        for (const auto& peer : readyPeers)
+        {
+            // A synchronous terminal callback may have left this lobby.
+            if (m_pLobbyMesh != meshForTick)
+                break;
+            NetworkLog(ELogVerbosity::LOG_RELEASE, "[NETWORK_CONNECTION_START_SIGNALLING] Dispatching queued peer %lld", static_cast<long long>(peer.userID));
+            meshForTick->StartConnectionSignalling(peer.middlewareID.c_str(), peer.userID, peer.preferredPort);
+        }
+        meshForTick->Flush();
+        meshForTick->Tick();
+    }
 
 	// TODO_NGMP: Do we still need this safety measure?
 	if (IsInLobby())
@@ -769,9 +800,14 @@ void NGMP_OnlineServices_LobbyInterface::UpdateRoomDataCache(std::function<void(
 	{
 		std::string strURI = std::format("{}/{}", NGMP_OnlineServicesManager::GetAPIEndpoint("Lobby"), m_CurrentLobby.lobbyID);
 		std::map<std::string, std::string> mapHeaders;
+        // GeneralsX @bugfix Codex 09/10/2026 An old roster response must not populate a newer lobby.
+        const uint64_t signallingGeneration = m_pendingLobbySignalling.Generation();
+        const int64_t requestedLobbyID = m_CurrentLobby.lobbyID;
 
 		NGMP_OnlineServicesManager::GetInstance()->GetHTTPManager()->SendGETRequest(strURI.c_str(), EIPProtocolVersion::DONT_CARE, mapHeaders, [=](bool bSuccess, int statusCode, std::string strBody, HTTPRequest* pReq)
 		{
+            if (signallingGeneration != m_pendingLobbySignalling.Generation() || requestedLobbyID != m_CurrentLobby.lobbyID)
+                return;
 			// safety, lobby could've been torn down by the time we get our response
 				if (m_CurrentLobby.lobbyID != -1 && TheNGMPGame != nullptr)
 				{
@@ -1033,10 +1069,17 @@ void NGMP_OnlineServices_LobbyInterface::JoinLobby(LobbyEntry lobbyInfo, std::st
     AnticheatPlugInterface::EndSession();
 
 	m_bAttemptingToJoinLobby = true;
+    const uint64_t signallingGeneration = m_pendingLobbySignalling.BeginJoin();
+    m_bSignallingCallbacksReady = false;
 	m_CurrentLobby = LobbyEntry();
+    // GeneralsX @bugfix Codex 09/10/2026 A new join must not inherit another lobby's relay credentials.
+    m_strTURNUsername.clear();
+    m_strTURNToken.clear();
 
 	NGMP_OnlineServicesManager::GetInstance()->GetAndParseServiceConfig([=]()
 		{
+            if (signallingGeneration != m_pendingLobbySignalling.Generation())
+                return;
 			std::string strURI = std::format("{}/{}", NGMP_OnlineServicesManager::GetAPIEndpoint("Lobby"), lobbyInfo.lobbyID);
 			std::map<std::string, std::string> mapHeaders;
 
@@ -1059,15 +1102,11 @@ void NGMP_OnlineServices_LobbyInterface::JoinLobby(LobbyEntry lobbyInfo, std::st
 
 			std::string strPostData = j.dump();
 
-			// create our mesh
-			if (m_pLobbyMesh == nullptr)
-			{
-				m_pLobbyMesh = new NetworkMesh();
-			}
-
 			// convert
 			NGMP_OnlineServicesManager::GetInstance()->GetHTTPManager()->SendPUTRequest(strURI.c_str(), EIPProtocolVersion::DONT_CARE, mapHeaders, strPostData.c_str(), [=](bool bSuccess, int statusCode, std::string strBody, HTTPRequest* pReq)
 				{
+                    if (signallingGeneration != m_pendingLobbySignalling.Generation())
+                        return;
 					if (NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>() == nullptr)
 						return;
 
@@ -1110,12 +1149,18 @@ void NGMP_OnlineServices_LobbyInterface::JoinLobby(LobbyEntry lobbyInfo, std::st
 
 							m_strTURNUsername = resp.turn_username;
 							m_strTURNToken = resp.turn_token;
-							NetworkLog(ELogVerbosity::LOG_DEBUG, "Got TURN username: %s, token: %s", m_strTURNUsername.c_str(), m_strTURNToken.c_str());
+							// GeneralsX @bugfix Codex 09/10/2026 Report readiness without writing relay secrets to logs.
+                            NetworkLog(ELogVerbosity::LOG_RELEASE, "[NGMP] Lobby relay credentials: username_present=%d token_present=%d", !m_strTURNUsername.empty(), !m_strTURNToken.empty());
 						}
 						catch (...)
 						{
-
+                            NetworkLog(ELogVerbosity::LOG_RELEASE, "[NGMP] Could not parse lobby relay credentials");
 						}
+
+                        // GeneralsX @bugfix Codex 09/10/2026 GNS snapshots relay credentials during mesh construction.
+                        // Failed joins create no mesh; successful joins configure the credentials first.
+                        if (m_pLobbyMesh == nullptr)
+                            m_pLobbyMesh = std::make_shared<NetworkMesh>();
 
 						// for safety
 						if (TheNGMPGame != nullptr)
@@ -1157,7 +1202,13 @@ void NGMP_OnlineServices_LobbyInterface::JoinLobby(LobbyEntry lobbyInfo, std::st
 
 						OnJoinedOrCreatedLobby(false, [=](bool bSuccess)
 							{
+                                if (signallingGeneration != m_pendingLobbySignalling.Generation())
+                                    return;
 								m_bAttemptingToJoinLobby = false;
+                                if (bSuccess)
+                                    m_pendingLobbySignalling.Activate(signallingGeneration);
+                                else
+                                    m_pendingLobbySignalling.Reset();
 								NGMP_OnlineServices_LobbyInterface* pLobbyInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();
 								if (pLobbyInterface != nullptr && pLobbyInterface->m_callbackJoinedLobby != nullptr)
 								{
@@ -1191,6 +1242,8 @@ void NGMP_OnlineServices_LobbyInterface::JoinLobby(LobbyEntry lobbyInfo, std::st
 
 					if (JoinResult != EJoinLobbyResult::JoinLobbyResult_Success)
 					{
+                        m_pendingLobbySignalling.Reset();
+                        m_bSignallingCallbacksReady = false;
 						NGMP_OnlineServices_LobbyInterface* pLobbyInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();
 						if (pLobbyInterface != nullptr && pLobbyInterface->m_callbackJoinedLobby != nullptr)
 						{
@@ -1206,18 +1259,19 @@ void NGMP_OnlineServices_LobbyInterface::JoinLobby(LobbyEntry lobbyInfo, std::st
 
 void NGMP_OnlineServices_LobbyInterface::LeaveCurrentLobby()
 {
+    m_bAttemptingToJoinLobby = false;
+    ResetLobbyTryingToJoin();
+    m_pendingLobbySignalling.Reset();
+    m_bSignallingCallbacksReady = false;
 	// reset host migration flags
 	ResetHostMigrationFlags();
 
 	AnticheatPlugInterface::EndSession();
 
-	// kill mesh
-	if (m_pLobbyMesh != nullptr)
-	{
-		m_pLobbyMesh->Disconnect();
-		delete m_pLobbyMesh;
-		m_pLobbyMesh = nullptr;
-	}
+    // GeneralsX @bugfix Codex 09/10/2026 Remove ownership immediately; active dispatch retains its lease.
+    const std::shared_ptr<NetworkMesh> departingMesh = std::move(m_pLobbyMesh);
+    if (departingMesh)
+        departingMesh->Disconnect();
 
 	if (TheNGMPGame != nullptr)
 	{
@@ -1276,10 +1330,14 @@ struct CreateLobbyResponse
 
 void NGMP_OnlineServices_LobbyInterface::CreateLobby(UnicodeString strLobbyName, UnicodeString strInitialMapName, AsciiString strInitialMapPath, bool bIsOfficial, int initialMaxSize, bool bVanillaTeamsOnly, bool bTrackStats, uint32_t startingCash, bool bPassworded, std::string strPassword, bool bAllowObservers)
 {
+    const uint64_t signallingGeneration = m_pendingLobbySignalling.BeginJoin();
+    m_bSignallingCallbacksReady = false;
 	AnticheatPlugInterface::EndSession();
 
 	NGMP_OnlineServicesManager::GetInstance()->GetAndParseServiceConfig([=]()
 		{
+            if (signallingGeneration != m_pendingLobbySignalling.Generation())
+                return;
 			m_CurrentLobby = LobbyEntry();
 			std::string strURI = NGMP_OnlineServicesManager::GetAPIEndpoint("Lobbies");
 			std::map<std::string, std::string> mapHeaders;
@@ -1321,6 +1379,8 @@ void NGMP_OnlineServices_LobbyInterface::CreateLobby(UnicodeString strLobbyName,
 
 			NGMP_OnlineServicesManager::GetInstance()->GetHTTPManager()->SendPUTRequest(strURI.c_str(), EIPProtocolVersion::DONT_CARE, mapHeaders, strPostData.c_str(), [=](bool bSuccess, int statusCode, std::string strBody, HTTPRequest* pReq)
 				{
+                    if (signallingGeneration != m_pendingLobbySignalling.Generation())
+                        return;
 					try
 					{
 						NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
@@ -1337,7 +1397,8 @@ void NGMP_OnlineServices_LobbyInterface::CreateLobby(UnicodeString strLobbyName,
 
 						m_strTURNUsername = resp.turn_username;
 						m_strTURNToken = resp.turn_token;
-						NetworkLog(ELogVerbosity::LOG_DEBUG, "Got TURN username: %s, token: %s", m_strTURNUsername.c_str(), m_strTURNToken.c_str());
+						// GeneralsX @bugfix Codex 09/10/2026 Report readiness without writing relay secrets to logs.
+                            NetworkLog(ELogVerbosity::LOG_RELEASE, "[NGMP] Lobby relay credentials: username_present=%d token_present=%d", !m_strTURNUsername.empty(), !m_strTURNToken.empty());
 
 
 						if (resp.result == ECreateLobbyResponseResult::SUCCEEDED)
@@ -1398,7 +1459,12 @@ void NGMP_OnlineServices_LobbyInterface::CreateLobby(UnicodeString strLobbyName,
 							// we always need to get the enc key etc
 							pLobbyInterface->OnJoinedOrCreatedLobby(false, [=](bool bSuccess)
 								{
-									// TODO_NGMP: Impl
+                                if (signallingGeneration != m_pendingLobbySignalling.Generation())
+                                    return;
+									if (bSuccess)
+                                        m_pendingLobbySignalling.Activate(signallingGeneration);
+                                    else
+                                        m_pendingLobbySignalling.Reset();
 									pLobbyInterface->InvokeCreateLobbyCallback(resp.result == ECreateLobbyResponseResult::SUCCEEDED);
 
 									// Set our properties
@@ -1408,6 +1474,7 @@ void NGMP_OnlineServices_LobbyInterface::CreateLobby(UnicodeString strLobbyName,
 						else
 						{
 							NetworkLog(ELogVerbosity::LOG_RELEASE, "[NGMP] Failed to create lobby!\n");
+                            m_pendingLobbySignalling.Reset();
 
 							pLobbyInterface->InvokeCreateLobbyCallback(resp.result == ECreateLobbyResponseResult::SUCCEEDED);
 						}
@@ -1416,7 +1483,7 @@ void NGMP_OnlineServices_LobbyInterface::CreateLobby(UnicodeString strLobbyName,
 					}
 					catch (...)
 					{
-
+                        m_pendingLobbySignalling.Reset();
 					}
 
 				});
@@ -1434,7 +1501,7 @@ void NGMP_OnlineServices_LobbyInterface::OnJoinedOrCreatedLobby(bool bAlreadyUpd
 	// join the network mesh too
 	if (m_pLobbyMesh == nullptr)
 	{
-		m_pLobbyMesh = new NetworkMesh();
+		m_pLobbyMesh = std::make_shared<NetworkMesh>();
 	}
 
 	m_bMarkedGameAsFinished = false;

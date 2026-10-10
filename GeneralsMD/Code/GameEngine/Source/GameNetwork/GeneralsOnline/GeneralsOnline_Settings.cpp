@@ -139,7 +139,8 @@ void GenOnlineSettings::Load(void)
 	::GetCurrentDirectoryA(MAX_PATH + 1u, GameDir);
 	std::string strSettingsFileDir = std::format("{}/GeneralsOnlineData/", TheGlobalData->getPath_UserData().str());
 	std::string strSettingsFilePath = std::format("{}/{}", strSettingsFileDir, SETTINGS_FILENAME);
-	std::string strSettingsFilePathLegacy = std::format("{}/{}", GameDir, SETTINGS_FILENAME_LEGACY);
+	// GeneralsX @bugfix Codex 08/10/2026 Construct a filesystem path without formatting the full padded MAX_PATH char array.
+	std::string strSettingsFilePathLegacy = (std::filesystem::path(GameDir) / SETTINGS_FILENAME_LEGACY).string();
 
 	// create directories we need
 	if (!std::filesystem::exists(strSettingsFileDir))
@@ -148,7 +149,7 @@ void GenOnlineSettings::Load(void)
 	}
 
 	// NGMP_NOTE: Prior to 6/23, we used the game dir for settings, this code migrates any legacy settings file to the new location (game user data dir)
-	if (std::filesystem::exists(strSettingsFilePathLegacy))
+	if (std::filesystem::is_regular_file(strSettingsFilePathLegacy))
 	{
 		std::filesystem::copy(strSettingsFilePathLegacy, strSettingsFilePath, std::filesystem::copy_options::overwrite_existing);
 		std::filesystem::remove(strSettingsFilePathLegacy);

@@ -245,6 +245,15 @@ Cflags: -I\${includedir}
   message(STATUS "DXVK source directory: ${DXVK_SOURCE_DIR}")
   message(STATUS "DXVK d3d8 library:     ${DXVK_D3D8_LIB}")
 
+elseif(ANDROID)
+  # GeneralsX @build BenderAI 13/07/2026 Android builds DXVK separately with
+  # the NDK/Meson pipeline and consumes its native DirectX compatibility
+  # headers here. The APK staging script supplies the resulting shared libs.
+  set(DXVK_SOURCE_DIR "${CMAKE_SOURCE_DIR}/references/fbraz3-dxvk")
+  set(dxvk_SOURCE_DIR "${DXVK_SOURCE_DIR}" CACHE PATH "DXVK source directory (Android)" FORCE)
+  set(DXVK_INCLUDE_DIR "${DXVK_SOURCE_DIR}/include/native" CACHE PATH "DXVK native headers" FORCE)
+  message(STATUS "Using local DXVK native headers for Android")
+
 else()
   # Linux: Fetch pre-built DXVK native binary for DirectX→Vulkan translation
   # Native 32-bit and 64-bit Linux binaries (.so)

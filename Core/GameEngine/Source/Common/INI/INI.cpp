@@ -1665,8 +1665,8 @@ Type scanType(std::string_view token)
 
         if constexpr (std::is_floating_point_v<Type>)
         {
-                // GeneralsX @bugfix BenderAI 07/04/2026 Apple SDKs in our deployment target do not expose std::from_chars for floats.
-                #if defined(__APPLE__)
+                // GeneralsX @bugfix BenderAI 07/04/2026 Apple and Android libc++ do not expose std::from_chars for floats.
+                #if defined(__APPLE__) || defined(__ANDROID__)
                 const std::string tokenString(token);
                 char *end = nullptr;
                 const double result = std::strtod(tokenString.c_str(), &end);
@@ -1689,17 +1689,19 @@ Type scanType(std::string_view token)
                 return result;
                 #endif
         }
+        else
+        {
+                // TheSuperHackers @info std::from_chars cannot parse "-1" as uint32 so the result needs to be int64 for integers.
+		Int64 result{};
+		const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), result);
 
-        // TheSuperHackers @info std::from_chars cannot parse "-1" as uint32 so the result needs to be int64 for integers.
-	std::conditional_t<std::is_integral_v<Type>, Int64, Type> result{};
-	const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), result);
+		if (ec != std::errc{})
+		{
+			throw INI_INVALID_DATA;
+		}
 
-	if (ec != std::errc{})
-	{
-		throw INI_INVALID_DATA;
-	}
-
-	return static_cast<Type>(result);
+		return static_cast<Type>(result);
+        }
 }
 
 #endif

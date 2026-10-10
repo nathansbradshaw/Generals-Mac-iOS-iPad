@@ -34,15 +34,19 @@
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #endif
-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
-// On iOS, SDL renames main() to SDL_main and provides its own UIApplicationMain
-// bootstrap; the app lifecycle (suspend/resume, window) is owned by SDL.
+#if defined(__ANDROID__) || (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
+// GeneralsX @build Codex 13/07/2026 Mobile SDL activities call the exported
+// SDL_main symbol instead of launching the desktop executable entry point.
 #include <SDL3/SDL_main.h>
+#endif
+#if defined(__ANDROID__) || (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
 #include <cerrno>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <filesystem>
 #include <string>
+#endif
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#include <filesystem>
 #endif
 #include <cstdlib>
 #include <cctype>
@@ -204,7 +208,8 @@ static void FilterSoftwareVulkanICDs()
 static void FilterPipeWireOpenAL()
 {
 	// GeneralsX @bugfix Copilot 24/03/2026 PipeWire/OpenAL workaround is Linux-only; keep macOS CoreAudio backend selection untouched.
-	#if defined(__linux__)
+	// GeneralsX @bugfix Codex 09/10/2026 Android is Linux but needs its OpenSL/AAudio backends.
+	#if defined(__linux__) && !defined(__ANDROID__)
 	// Crash: alcOpenDevice() hits 'movaps %xmm1,0x26260(%rbx)' — SSE movaps requires
 	// 16-byte alignment; a misaligned ALCdevice struct faults regardless of backend.
 	// Disabling CPU extensions forces openal-soft to use scalar code that has no
@@ -259,6 +264,48 @@ int main(int argc, char* argv[])
 	// Store command line arguments in globals for CommandLine.cpp parser
 	__argc = argc;
 	__argv = argv;
+
+#if defined(__ANDROID__)
+	// GeneralsX @build Codex 13/07/2026 Android's SDL activity starts the
+	// engine without a useful process working directory or terminal stderr.
+	// Keep retail data in app-private files/GameData and retain startup output
+	// beside it so adb run-as can retrieve failures that occur before the UI.
+	{
+		const char *internalStorage = SDL_GetAndroidInternalStoragePath();
+		if (internalStorage != nullptr) {
+			char logPath[1024];
+			snprintf(logPath, sizeof(logPath), "%s/generals-stderr.log", internalStorage);
+			const int logFd = open(logPath, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+			if (logFd >= 0) {
+				dup2(logFd, STDERR_FILENO);
+				// GeneralsX @build Codex 08/10/2026 Include CLI replay results in
+				// opt-in diagnostic logs; Android otherwise discards native stdout.
+				if (getenv("GENERALSX_CRC_TRACE")) {
+					dup2(logFd, STDOUT_FILENO);
+					setvbuf(stdout, nullptr, _IONBF, 0);
+				}
+				close(logFd);
+				setvbuf(stderr, nullptr, _IONBF, 0);
+			}
+
+			char gameDataPath[1024];
+			snprintf(gameDataPath, sizeof(gameDataPath), "%s/GameData", internalStorage);
+			if (mkdir(gameDataPath, 0700) != 0 && errno != EEXIST) {
+				fprintf(stderr, "WARNING: mkdir(%s) failed: %s\n", gameDataPath, strerror(errno));
+			}
+			if (chdir(gameDataPath) != 0) {
+				fprintf(stderr, "WARNING: chdir(%s) failed: %s\n", gameDataPath, strerror(errno));
+			} else {
+				fprintf(stderr, "INFO: Android working directory: %s\n", gameDataPath);
+			}
+
+			char cachePath[1024];
+			snprintf(cachePath, sizeof(cachePath), "%s/cache", internalStorage);
+			mkdir(cachePath, 0700);
+			setenv("DXVK_STATE_CACHE_PATH", cachePath, 0);
+		}
+	}
+#endif
 
 #if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
 	// Diagnostic capture: an icon-launched app's stderr goes nowhere we can read,
@@ -485,11 +532,20 @@ int main(int argc, char* argv[])
 		// This prevents LLVM SIGSEGV crash during Vulkan driver enumeration
 		// Must be done here, not in SDL3GameEngine::init() which is too late
 		fprintf(stderr, "INFO: Initializing SDL3 video subsystem...\n");
-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#if defined(__ANDROID__) || (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
 		// All mouse events are synthesized by the gesture translator in
 		// SDL3GameEngine.cpp; SDL's automatic touch->mouse synthesis would
 		// double-deliver finger 1 and fight the two-finger pan logic.
 		SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+#endif
+#if defined(__ANDROID__)
+		// GeneralsX @bugfix Codex 09/10/2026 SDL's resizable window otherwise
+		// overrides the manifest with FULL_USER and resumes in portrait.
+		SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+		// Deliver the Android Back action as an SDL_SCANCODE_AC_BACK key event
+		// (mapped to Escape in SDL3GameEngine.cpp) instead of finishing the
+		// activity, so Back skips movies and closes cancellable menus in-game.
+		SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
 #endif
 		if (!SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
 			fprintf(stderr, "FATAL: Failed to initialize SDL3: %s\n", SDL_GetError());
@@ -537,7 +593,9 @@ int main(int argc, char* argv[])
 		ApplicationHWnd = (HWND)TheSDL3Window;
 		fprintf(stderr, "INFO: SDL3 window created successfully\n");
 
-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#if defined(__ANDROID__) || (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
+		// GeneralsX @bugfix Codex 09/10/2026 Apply native aspect/resolution on Android too,
+		// so rendering and touch share a drawable without the default 4:3 viewport.
 		// Match the game's internal resolution to the phone screen's aspect ratio.
 		// Without this the engine runs its 4:3 default inside the 19.5:9 display:
 		// pillarboxed picture and a skewed window->game coordinate mapping. Height
@@ -559,6 +617,15 @@ int main(int argc, char* argv[])
 			// the engine's resolution-aware font scaling (GlobalLanguage).
 			int winW = 0, winH = 0;
 			SDL_GetWindowSizeInPixels(TheSDL3Window, &winW, &winH);
+#if defined(__ANDROID__)
+			// Android initially reports the area minus navigation bars. The native
+			// fullscreen surface reaches the display size after the first resize.
+			const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(TheSDL3Window));
+			if (mode && mode->w > 0 && mode->h > 0) {
+				winW = mode->w > mode->h ? mode->w : mode->h;
+				winH = mode->w > mode->h ? mode->h : mode->w;
+			}
+#endif
 			if (!userSetRes && winW > 0 && winH > 0 && winW > winH) {
 				static char xresVal[16], yresVal[16];
 				static char xresFlag[] = "-xres";
@@ -581,7 +648,7 @@ int main(int argc, char* argv[])
 				newArgv[n] = nullptr;
 				__argv = newArgv;
 				__argc = n;
-				fprintf(stderr, "INFO: iOS internal resolution set to %sx%s (window %dx%d)\n",
+				fprintf(stderr, "INFO: Mobile internal resolution set to %sx%s (window %dx%d)\n",
 				        xresVal, yresVal, winW, winH);
 			}
 		}

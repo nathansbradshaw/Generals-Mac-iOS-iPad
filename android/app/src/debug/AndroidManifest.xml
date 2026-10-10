@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name="com.nathanbradshaw.generalsxzh.VulkanProbeActivity"
+            android:exported="true" android:screenOrientation="landscape" />
+        <!-- GeneralsX @build Codex 08/10/2026 Replay runner is absent from release APKs. -->
+        <activity
+            android:name="com.nathanbradshaw.generalsxzh.ReplayTestActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation" />
+        <activity
+            android:name="com.nathanbradshaw.generalsxzh.OnlineTestActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden|navigation" />
+        <!-- GeneralsX @build Codex 09/10/2026 Phone-only gesture fixture; absent from release. -->
+        <receiver android:name="com.nathanbradshaw.generalsxzh.DebugTouchReceiver"
+            android:exported="true" />
+    </application>
+</manifest>

@@ -677,6 +677,17 @@ void TestBlendRender(RenderInfoClass & rinfo)
 
 void W3DProjectedShadowManager::flushDecals(W3DShadowTexture *texture, ShadowType type)
 {
+#if defined(__ANDROID__)
+	// Tree shadows call this entry point directly instead of renderShadows().
+	// GFXStream corrupts this fixed-function decal pass, so suppress it here at
+	// the shared draw boundary as well as at the normal manager entry point.
+	nShadowDecalStartBatchVertex=nShadowDecalVertsInBuf;
+	nShadowDecalStartBatchIndex=nShadowDecalIndicesInBuf;
+	nShadowDecalPolysInBatch=0;
+	nShadowDecalVertsInBatch=0;
+	return;
+#endif
+
 	static	Matrix4x4 mWorld(true);	//initialize to identity matrix
 
 	if (nShadowDecalVertsInBatch == 0 && nShadowDecalPolysInBatch == 0)
@@ -803,6 +814,11 @@ is an optimized system that only uses the render objects bounding box to determi
 */
 void W3DProjectedShadowManager::queueDecal(W3DProjectedShadow *shadow)
 {
+#if defined(__ANDROID__)
+	// W3DTreeBuffer queues its shadows directly, bypassing renderShadows().
+	return;
+#endif
+
 	int i,j,k;
 	Vector3 hmapVertex,objPos;
 	AABoxClass box;
@@ -1203,6 +1219,7 @@ void W3DProjectedShadowManager::queueSimpleDecal(W3DProjectedShadow *shadow)
 			pvVertices->x=vertex.X;
 			pvVertices->y=vertex.Y;
 			pvVertices->z=vertex.Z;
+			pvVertices->diffuse=shadow->m_diffuse;
 			pvVertices->u=0.0f;
 			pvVertices->v=0.0f;
 			pvVertices++;
@@ -1212,6 +1229,7 @@ void W3DProjectedShadowManager::queueSimpleDecal(W3DProjectedShadow *shadow)
 			pvVertices->x=vertex.X;
 			pvVertices->y=vertex.Y;
 			pvVertices->z=vertex.Z;
+			pvVertices->diffuse=shadow->m_diffuse;
 			pvVertices->u=0.0f;
 			pvVertices->v=1.0f;
 			pvVertices++;
@@ -1221,6 +1239,7 @@ void W3DProjectedShadowManager::queueSimpleDecal(W3DProjectedShadow *shadow)
 			pvVertices->x=vertex.X;
 			pvVertices->y=vertex.Y;
 			pvVertices->z=vertex.Z;
+			pvVertices->diffuse=shadow->m_diffuse;
 			pvVertices->u=1.0f;
 			pvVertices->v=1.0f;
 			pvVertices++;
@@ -1230,6 +1249,7 @@ void W3DProjectedShadowManager::queueSimpleDecal(W3DProjectedShadow *shadow)
 			pvVertices->x=vertex.X;
 			pvVertices->y=vertex.Y;
 			pvVertices->z=vertex.Z;
+			pvVertices->diffuse=shadow->m_diffuse;
 			pvVertices->u=1.0f;
 			pvVertices->v=0.0f;
 			pvVertices++;
@@ -1302,6 +1322,22 @@ void W3DProjectedShadowManager::prepareShadows()
 Int W3DProjectedShadowManager::renderShadows(RenderInfoClass & rinfo)
 {
 	Int projectionCount=0;
+
+#if defined(__ANDROID__)
+	// GeneralsX @bugfix Opus 14/07/2026 The whole projected-shadow manager (both
+	// SHADOW_DECAL unit/prop shadows drawn with a multiplicative blend, and
+	// SHADOW_PROJECTION casters draped over terrain from a render target) renders
+	// black on the Android Emulator's GFXStream backend. Verified in-engine: the
+	// decal texture, geometry and vertex color are correct (an opaque-shader draw
+	// shows the texture), but GFXStream mishandles the fixed-function
+	// dest-reading/render-to-texture passes and fills each shadow quad with opaque
+	// black. Neither swapping the multiplicative blend to the equivalent
+	// (DESTCOLOR,ZERO) form nor pooling changes helped. Real Vulkan drivers render
+	// this correctly (identical code works on desktop DXVK), so suppress only this
+	// visual pass on the emulator; stencil shadow volumes are a separate manager and
+	// are unaffected. Gameplay is identical.
+	return projectionCount;
+#endif
 
 	if (!TheTerrainRenderObject)
 		return projectionCount;

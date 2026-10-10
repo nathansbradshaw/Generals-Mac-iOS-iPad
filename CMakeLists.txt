@@ -40,6 +40,18 @@ endif()
 # Top level project, doesn't really affect anything.
 project(genzh LANGUAGES C CXX)
 
+if(ANDROID)
+    # GeneralsX @build BenderAI 13/07/2026 Gradle drives the NDK toolchain;
+    # vcpkg supplies target-architecture libraries through an isolated prefix.
+    set(GENERALSX_ANDROID_VCPKG_ROOT "${CMAKE_SOURCE_DIR}/build/android-vcpkg/arm64-android")
+    if(NOT EXISTS "${GENERALSX_ANDROID_VCPKG_ROOT}/share/freetype/freetype-config.cmake")
+        message(FATAL_ERROR
+            "Android engine dependencies are missing. Run scripts/build/android/build-engine-deps-android.sh")
+    endif()
+    list(PREPEND CMAKE_PREFIX_PATH "${GENERALSX_ANDROID_VCPKG_ROOT}")
+    list(PREPEND CMAKE_FIND_ROOT_PATH "${GENERALSX_ANDROID_VCPKG_ROOT}")
+endif()
+
 # GeneralsX @build BenderAI 10/02/2026
 # Linux port: Make CompatLib headers globally accessible so Core libraries (WWLib, WWMath, etc.)
 # can access platform compatibility types when building for non-Windows platforms

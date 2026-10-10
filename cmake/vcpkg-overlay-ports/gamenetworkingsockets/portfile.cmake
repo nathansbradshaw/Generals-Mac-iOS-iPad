@@ -6,6 +6,13 @@ vcpkg_from_github(
     HEAD_REF master
     PATCHES
         ios-system-name.patch # GeneralsX: treat iOS like Darwin (OSX define)
+        implicit-accept-crypto.patch # GeneralsX @bugfix Codex 09/10/2026 Finish crypto for symmetric implicit acceptance.
+        native-turn-endpoint-dedup.patch # GeneralsX @bugfix Codex 09/10/2026 Bound retries for duplicate resolved TURN addresses.
+        android-platform.patch # GeneralsX @build Codex 08/10/2026 Support Android debugger detection, IPv4 values, DNS and ICE address enumeration.
+        protobuf-config.patch # GeneralsX @build Codex 08/10/2026 Preserve Protobuf config targets and their Abseil/UTF8 transitive dependencies.
+        android-system-name.patch # GeneralsX @build Codex 08/10/2026 Android uses the POSIX/Linux socket backend.
+        native-turn-permission-renewal.patch # GeneralsX @bugfix Codex 09/10/2026 Renew unchanged relay peer permissions before expiry.
+        native-turn-stale-nonce.patch # GeneralsX @bugfix Codex 09/10/2026 Retry matched stale-nonce challenges without disabling authenticated renewal.
 )
 
 vcpkg_check_features(

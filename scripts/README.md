@@ -27,6 +27,166 @@ Scripts for Linux native and Docker-based builds:
 - `deploy-macos-generals.sh` - Deploy binaries
 - `run-macos-zh.sh` - Launch the game
 
+#### `build/ios/` - iOS Build and Device Installation
+
+- `setup-install-ios-zh.sh` - Guided one-command signing checks, build,
+  packaging, and connected-device installation for GeneralsXZH
+- `package-ios-zh.sh` - Assemble, sign, and optionally install an existing iOS build
+- `fetch-moltenvk.sh` - Fetch the pinned iOS MoltenVK framework
+- `stage-fonts.sh` - Stage redistributable fonts for full packages
+
+Fast development install:
+
+```bash
+./scripts/build/ios/setup-install-ios-zh.sh
+```
+
+Use `--full` to bundle game data or `--no-install` to create the signed package
+without installing it.
+
+Provision a pre-seeded self-hosted GeneralsOnline account after installation:
+
+```bash
+./scripts/go-online/provision-ios-online-account.sh
+```
+
+The script reads `GENERALSX_ONLINE_JWT_KEY` from the gitignored `.env`, mints
+the default `34621 / nathan` refresh token, installs it in the app's private
+container, and relaunches the app. Use `--user-id` and `--name` for another
+account. The token is never printed.
+
+#### `build/android/` - Android ARM64 Build and Emulator Installation
+
+- `fetch-sdl3-android.sh` - Download and verify the pinned official SDL3
+  Android AAR used by Gradle/Prefab
+- `configure-dxvk-android.sh` - Generate the NDK API 35 ARM64 Meson cross
+  configuration and isolated SDL3 pkg-config metadata
+- `build-dxvk-android.sh` - Cross-compile DXVK native D3D8/D3D9 for Android
+- `build-android-zh.sh` - Validate Java/SDK/NDK/CMake, build DXVK, stage its
+  ARM64 libraries, and build either the bootstrap or full-engine debug APK
+- `provision-game-data-android.sh` - Stream user-owned Zero Hour data, mobile
+  fonts, and default configuration into the debug app's private storage
+- `install-run-android-zh.sh` - Install and launch the APK on the active Android
+  device or emulator
+
+```bash
+./scripts/build/android/build-android-zh.sh --full
+./scripts/build/android/install-run-android-zh.sh
+./scripts/build/android/provision-game-data-android.sh
+./scripts/build/android/install-run-android-zh.sh
+```
+
+Run the provisioner after the first debug APK installation, then relaunch the
+full engine. It reads retail data from `$GX_GAME_DATA` or
+`$HOME/GeneralsX/GeneralsZH`; those multi-gigabyte assets stay outside the APK
+and repository. Omitting `--full` builds the lightweight SDL3/DXVK bootstrap.
+
+For the full engine with GeneralsOnline enabled, build without launching a game
+or emulator:
+
+```bash
+VCPKG_MAX_CONCURRENCY=2 nice -n 10 ./scripts/build/android/build-android-zh.sh --online
+```
+
+`--online` implies `--full` and builds libcurl with OpenSSL/WebSockets plus the
+same GameNetworkingSockets 1.6 ICE overlay used by the Apple clients. `--full`
+alone retains offline behavior. Building does not install or launch the APK.
+
+`scripts/go-online/provision-android-online-account.py` installs an existing
+self-hosted test account in the debug app's private storage, without launching
+it. Stop the app first. For example, after installing the online APK and retail
+data on an emulator:
+
+```bash
+python3 scripts/go-online/provision-android-online-account.py --user-id 34622 --name friend1
+```
+
+It reads the signing key from the gitignored `.env` or
+`GENERALSX_ONLINE_JWT_KEY`, preserves unrelated settings, and backs up replaced
+settings/credentials privately. It verifies both transferred pending files byte
+for byte before replacing either active file; a transfer timeout preserves the
+active files. `--device` selects an ADB serial; `--url` sets
+the service URL. The default `10.0.2.2` reaches the Mac host from the Android
+emulator; a physical device needs the host's reachable LAN address. Provisioning
+has mock coverage for settings preservation and refusal while the app runs;
+Android login and a short automated Mac↔Android emulator match now pass;
+the same recording also passes headlessly on a physical Pixel 7 with all 22
+state samples matching the Mac. A physical Pixel ↔ Mac rendered match also
+passes production/movement/surrender with all 22 samples matching and clean
+replay headers after fixing unsupported ClipDistance emission. Its lobby API
+used a temporary USB tunnel; gameplay peers connected through direct ICE.
+Untethered API access, touch unit control, lifecycle, and broader gameplay remain
+open. Hardware without ClipDistance reports no D3D user clip-plane support.
+
+For Mac simulation checks without screen or audio use the native
+`-headless -replay <filename.rep>` flags. Replays must be in the engine's user
+replay directory. Use a temporary `HOME` populated with a copy of the user data
+so diagnostics cannot modify personal saves or settings. This mode validates
+replay simulation; online menu callbacks and a full multiplayer match still need
+a separate runtime test. On 2026-10-08 the preserved and rebuilt Mac executables
+both stopped at the same frame-107 CRC mismatch for the saved July recording;
+that replay check is not passing.
+
+#### Screen-free multiplayer diagnostics
+
+Use an Android emulator started with `-no-window -no-audio -no-snapshot`;
+this does not focus or rearrange desktop windows. Existing user-owned retail
+assets and a private online account must already be provisioned. Cold boot
+avoids the Vulkan surface failure observed when restoring an old snapshot.
+
+Debug APKs have two fixed-input test activities, absent from release builds:
+
+```bash
+adb shell am start -n com.nathanbradshaw.generalsxzh/.ReplayTestActivity
+adb shell am start -n com.nathanbradshaw.generalsxzh/.OnlineTestActivity
+```
+
+Stop the package before switching activities. `ReplayTestActivity` runs
+`-headless -replay crossplay-test.rep`; put that recording in the app-private
+`files/GameData/GeneralsX/GeneralsZH/Replays` directory first. It writes
+`files/replay-crc-*.trace`. `OnlineTestActivity` auto-joins an existing test
+lobby, accepts when peers connect, and writes `files/online-crc-*.trace`.
+It queues another starting worker at frame 300, moves the produced worker at
+900, checks movement at 1500, and surrenders at 2100. This exercises network
+commands, not touch input. Use disposable local test lobbies.
+
+With CRC tracing enabled, Android captures native stdout and stderr in
+`files/generals-stderr.log`, including replay elapsed/game time and exit code.
+Install the complete retail data set for validation. A reduced archive set
+returned exit 0 with an empty world on both Android and Mac; confirm that
+object-bearing state traces match the known live match as well as checking
+completion. Archive names do not establish which resources can be omitted.
+`OnlineTestActivity` also sets `DXVK_SHADER_DUMP_PATH` to the app-private
+`files/shader-dump` directory. The source fork dumps original modules and
+`FINAL_*.spv` modules after interface rewriting for driver-crash diagnosis.
+Validate both sets; original modules alone do not establish what the driver
+compiled. With this flag the source fork also logs pipeline state before
+compilation, so a fatal driver call can be associated with shader identities and
+specialization values. `spirv-val` success alone does not establish support for
+the module's capabilities on a particular physical device. Normal app launches
+do not set this diagnostic environment variable.
+
+On Mac, use an isolated `HOME` with copied user data and run the full client
+with `GENERALSX_HIDDEN_WINDOW=1` plus the existing `-startAutostart` flag.
+`GENERALSX_SMOKE_COMMANDS=host` runs production/movement without surrender;
+`GENERALSX_SMOKE_COMMANDS=surrender` also ends the match. These diagnostics
+are off when their environment variables are unset.
+
+Set `GENERALSX_CRC_TRACE=/absolute/path/online-crc` on either native client
+to record the existing CRC serialization through frame 2100; no additional
+CRC messages or simulation updates are introduced. Pull Android traces with
+`adb exec-out run-as com.nathanbradshaw.generalsxzh cat files/online-crc-000100.trace`.
+Compare same-name trace collections with:
+
+```bash
+python3 scripts/qa/replay/compare-crc-traces.py /tmp/mac-traces /tmp/android-traces
+```
+
+The command exits 1 on differences or missing frames and identifies the first
+object label. Clear old diagnostic traces between matches. Byte equality at
+sampled CRC frames is stronger evidence than the game's 32-bit checksum,
+but neither establishes every faction/map/action or physical-device behavior.
+
 #### `build/windows/` - Windows Build (Pending)
 Reserved for modern Windows toolchain (VS2022 + SDL3 + DXVK + OpenAL)
 

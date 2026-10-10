@@ -1274,15 +1274,21 @@ Bool RecorderClass::playbackFile(AsciiString filename)
 	}
 #endif
 
-	Bool isMultiplayer = m_gameInfo.getSlot(header.localPlayerIndex)->getIP() != 0;
-	m_crcInfo = NEW CRCInfo(header.localPlayerIndex, isMultiplayer);
 	REPLAY_CRC_INTERVAL = m_gameInfo.getCRCInterval();
-	DEBUG_LOG(("Player index is %d, replay CRC interval is %d", m_crcInfo->getLocalPlayer(), REPLAY_CRC_INTERVAL));
 
 	Int difficulty = 0;
 	m_file->read(&difficulty, sizeof(difficulty));
 
 	m_file->read(&m_originalGameMode, sizeof(m_originalGameMode));
+
+	// GeneralsX @bugfix Codex 08/10/2026 NGMP slots have no legacy IP address.
+	// Use the saved network game mode so playback skips the undelivered frame-0
+	// CRC, retaining the legacy IP fallback for recordings with older mode data.
+	GameSlot *localSlot = header.localPlayerIndex >= 0 ? m_gameInfo.getSlot(header.localPlayerIndex) : nullptr;
+	Bool isMultiplayer = m_originalGameMode == GAME_LAN || m_originalGameMode == GAME_INTERNET ||
+		(localSlot && localSlot->getIP() != 0);
+	m_crcInfo = NEW CRCInfo(header.localPlayerIndex, isMultiplayer);
+	DEBUG_LOG(("Player index is %d, replay CRC interval is %d", m_crcInfo->getLocalPlayer(), REPLAY_CRC_INTERVAL));
 
 	Int rankPoints = 0;
 	m_file->read(&rankPoints, sizeof(rankPoints));

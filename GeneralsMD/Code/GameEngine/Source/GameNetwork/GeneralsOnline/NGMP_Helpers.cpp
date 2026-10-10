@@ -3,6 +3,7 @@
 #include <ctime>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <locale>
 #include <codecvt>
 #include "../OnlineServices_Init.h"
@@ -94,7 +95,8 @@ void NetworkLog(ELogVerbosity logVerbosity, const char* fmt, ...)
 	buffer[8192 - 1] = 0;
 	va_end(args);
 
-	std::string strLogBuffer = std::format("[{}] {}", timebuf, buffer);
+	// GeneralsX @bugfix Codex 08/10/2026 Format terminated text, not padded char arrays that insert NULs before the message.
+	std::string strLogBuffer = std::format("[{}] {}", std::string_view(timebuf), std::string_view(buffer));
 
 	// TODO_NGMP: Keep open and flush regularly
 	std::ofstream logFile;

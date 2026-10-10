@@ -4880,6 +4880,39 @@ void GameLogic::destroyObject( Object *obj )
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 Bool inCRCGen = FALSE;
+// GeneralsX @build Codex 08/10/2026 Opt-in byte traces of the existing CRC stream.
+// The caller owns the output prefix; no extra snapshots or simulation updates run.
+namespace {
+class SimulationTraceCRC : public XferCRC
+{
+public:
+	SimulationTraceCRC(const char *prefix, UnsignedInt frame) : m_trace(nullptr)
+	{
+		char filename[2048];
+		snprintf(filename, sizeof(filename), "%s-%06u.trace", prefix, frame);
+		m_trace = fopen(filename, "wb");
+	}
+	~SimulationTraceCRC() override { if (m_trace) fclose(m_trace); }
+	void label(const char *name, UnsignedInt id = 0)
+	{
+		if (m_trace) fprintf(m_trace, "LABEL %u %s\n", id, name);
+	}
+protected:
+	void xferImplementation(void *data, Int size) override
+	{
+		if (m_trace) {
+			fprintf(m_trace, "DATA %d ", size);
+			const unsigned char *bytes = static_cast<const unsigned char *>(data);
+			for (Int i = 0; bytes && i < size; ++i) fprintf(m_trace, "%02X", bytes[i]);
+			fputc('\n', m_trace);
+		}
+		XferCRC::xferImplementation(data, size);
+	}
+private:
+	FILE *m_trace;
+};
+}
+
 UnsignedInt GameLogic::getCRC( Int mode, AsciiString deepCRCFileName )
 {
 	if (mode != CRC_RECALC)
@@ -4890,6 +4923,7 @@ UnsignedInt GameLogic::getCRC( Int mode, AsciiString deepCRCFileName )
 	LatchRestore<Bool> latch(inCRCGen, !isInGameLogicUpdate());
 
 	XferCRC *xferCRC;
+	SimulationTraceCRC *traceCRC = nullptr;
 	AsciiString marker;
 	if (deepCRCFileName.isNotEmpty())
 	{
@@ -4914,7 +4948,22 @@ UnsignedInt GameLogic::getCRC( Int mode, AsciiString deepCRCFileName )
 		else
 #endif // DEBUG_CRC
 		{
-			xferCRC = NEW XferCRC;
+			const char *tracePrefix = getenv("GENERALSX_CRC_TRACE");
+			// GeneralsX @build Codex 09/10/2026 Bound opt-in diagnostic traces
+            // for sustained cross-play tests beyond nonce expiry; default stays2100.
+            static const UnsignedInt traceEndFrame = []() -> UnsignedInt {
+                const char *value = getenv("GENERALSX_CRC_TRACE_END_FRAME");
+                if (!value || !*value) return 2100;
+                char *end = nullptr;
+                unsigned long parsed = strtoul(value, &end, 10);
+                return end && !*end && parsed <= 30000 ? parsed : 2100;
+            }();
+			if (tracePrefix && *tracePrefix && m_frame <= traceEndFrame) {
+				traceCRC = NEW SimulationTraceCRC(tracePrefix, m_frame);
+				xferCRC = traceCRC;
+			} else {
+				xferCRC = NEW XferCRC;
+			}
 			crcName = "lightCRC";
 		}
 		xferCRC->open(crcName);
@@ -4932,8 +4981,10 @@ UnsignedInt GameLogic::getCRC( Int mode, AsciiString deepCRCFileName )
 	xferCRC->xferAsciiString(&marker);
 	for( obj = m_objList; obj; obj=obj->getNextObject() )
 	{
+		if (traceCRC) traceCRC->label(obj->getTemplate()->getName().str(), static_cast<UnsignedInt>(obj->getID()));
 		xferCRC->xferSnapshot( obj );
 	}
+	if (traceCRC) traceCRC->label("RandomSeed");
 	UnsignedInt seed = GetGameLogicRandomSeedCRC();
 	if (isInGameLogicUpdate())
 	{
@@ -4950,6 +5001,7 @@ UnsignedInt GameLogic::getCRC( Int mode, AsciiString deepCRCFileName )
 	}
 	marker = "MARKER:ThePartitionManager";
 	xferCRC->xferAsciiString(&marker);
+	if (traceCRC) traceCRC->label("ThePartitionManager");
 	xferCRC->xferSnapshot( ThePartitionManager );
 	if (isInGameLogicUpdate())
 	{
@@ -4972,6 +5024,7 @@ UnsignedInt GameLogic::getCRC( Int mode, AsciiString deepCRCFileName )
 
 	marker = "MARKER:ThePlayerList";
 	xferCRC->xferAsciiString(&marker);
+	if (traceCRC) traceCRC->label("ThePlayerList");
 	xferCRC->xferSnapshot( ThePlayerList );
 	if (isInGameLogicUpdate())
 	{
@@ -4980,6 +5033,7 @@ UnsignedInt GameLogic::getCRC( Int mode, AsciiString deepCRCFileName )
 
 	marker = "MARKER:TheAI";
 	xferCRC->xferAsciiString(&marker);
+	if (traceCRC) traceCRC->label("TheAI");
 	xferCRC->xferSnapshot( TheAI );
 	if (isInGameLogicUpdate())
 	{

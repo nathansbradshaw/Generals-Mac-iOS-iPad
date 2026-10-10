@@ -5,6 +5,7 @@
 #include "GameNetwork/GeneralsOnline/json.hpp"
 #include "../OnlineServices_Init.h"
 #include "../HTTP/HTTPManager.h"
+#include "GameNetwork/GeneralsOnline/HTTP/TLSVerification.h"
 #include "GameNetwork/GameSpy/PeerDefs.h"
 
 
@@ -87,7 +88,8 @@ void WebSocket::Connect(const char* url, bool bIsReconnect, std::function<void(v
 	{
 		m_fnWebsocketConnectedCallback = fnWebsocketConnectedCallback;
 
-		int httpResponseCode = -1;
+		// GeneralsX @bugfix Codex 09/10/2026 CURLINFO_RESPONSE_CODE requires long storage.
+		long httpResponseCode = -1;
 		m_strWebsocketAddr = std::string(url);
 		curl_easy_setopt(m_pCurlWS, CURLOPT_URL, url);
 
@@ -99,36 +101,10 @@ void WebSocket::Connect(const char* url, bool bIsReconnect, std::function<void(v
 		curl_easy_setopt(m_pCurlWS, CURLOPT_HTTP_VERSION, NGMP_OnlineServicesManager::Settings.Network_GetHTTPVersionForCurl());
 
 #if _DEBUG
-		curl_easy_setopt(m_pCurlWS, CURLOPT_SSL_VERIFYPEER, 0);
-		curl_easy_setopt(m_pCurlWS, CURLOPT_SSL_VERIFYHOST, 0);
-
 		curl_easy_setopt(m_pCurlWS, CURLOPT_VERBOSE, 1L);
-#else
-        if (HTTPManager::IsCACertStoreBad())
-        {
-            curl_easy_setopt(m_pCurlWS, CURLOPT_SSL_VERIFYPEER, 0);
-            curl_easy_setopt(m_pCurlWS, CURLOPT_SSL_VERIFYHOST, 0);
-        }
-        else
-        {
-            std::ifstream certFile("cacert.pem");
-            if (certFile.good())
-            {
-                certFile.close();
-                curl_easy_setopt(m_pCurlWS, CURLOPT_CAINFO, "cacert.pem");
-
-                curl_easy_setopt(m_pCurlWS, CURLOPT_SSL_VERIFYPEER, 1L);
-                curl_easy_setopt(m_pCurlWS, CURLOPT_SSL_VERIFYHOST, 2L);
-            }
-            else
-            {
-				HTTPManager::SetCACertStoreBad();
-                curl_easy_setopt(m_pCurlWS, CURLOPT_SSL_VERIFYPEER, 0);
-                curl_easy_setopt(m_pCurlWS, CURLOPT_SSL_VERIFYHOST, 0);
-            }
-        }
 #endif
 
+        ConfigureCurlTLSVerification(m_pCurlWS);
 
 		// ws needs auth
 		NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
@@ -223,6 +199,53 @@ void WebSocket::Disconnect()
 
 	m_vecWSPartialBuffer.clear();
 	m_bConnected = false;
+}
+
+// GeneralsX @feature BenderAI 12/07/2026 Release the live WebSocket before iOS
+// suspends the process, then reuse NGMP's authenticated reconnect flow after
+// foregrounding. This avoids touching a stale curl handle after a long pause.
+void WebSocket::SuspendForAppLifecycle()
+{
+	std::scoped_lock<std::recursive_timed_mutex> lock(m_mutex);
+	if (m_bShuttingDown || m_bSuspendedForAppLifecycle)
+		return;
+
+	m_bSuspendedForAppLifecycle = true;
+	m_bConnected = false;
+	m_bReconnecting = false;
+	m_numReconnectAttempts = 0;
+	m_lastReconnectAttempt = -1;
+	m_lastPong = -1;
+	m_vecWSPartialBuffer.clear();
+
+	if (m_pCurlWS != nullptr) {
+		if (m_pMulti != nullptr)
+			curl_multi_remove_handle(m_pMulti, m_pCurlWS);
+		curl_easy_cleanup(m_pCurlWS);
+		m_pCurlWS = nullptr;
+	}
+	if (m_pHeaders != nullptr) {
+		curl_slist_free_all(m_pHeaders);
+		m_pHeaders = nullptr;
+	}
+
+	NetworkLog(ELogVerbosity::LOG_RELEASE, "[WebSocket] Suspended for app lifecycle");
+}
+
+void WebSocket::ResumeFromAppLifecycle()
+{
+	std::scoped_lock<std::recursive_timed_mutex> lock(m_mutex);
+	if (m_bShuttingDown || !m_bSuspendedForAppLifecycle)
+		return;
+
+	m_bSuspendedForAppLifecycle = false;
+	if (m_strWebsocketAddr.empty())
+		return;
+
+	m_bReconnecting = true;
+	m_numReconnectAttempts = 0;
+	m_lastReconnectAttempt = -1;
+	NetworkLog(ELogVerbosity::LOG_RELEASE, "[WebSocket] Resuming from app lifecycle; reconnect scheduled");
 }
 
 void WebSocket::Send(const char* send_payload)
@@ -557,7 +580,8 @@ void WebSocket::Tick()
 
                 if (pCurlHandle == m_pCurlWS) // shouldnt hear about anything else
                 {
-					int httpResponseCode = -1;
+					// GeneralsX @bugfix Codex 09/10/2026 CURLINFO_RESPONSE_CODE requires long storage.
+					long httpResponseCode = -1;
 					curl_easy_getinfo(pCurlHandle, CURLINFO_RESPONSE_CODE, &httpResponseCode);
 
 					/* Check for errors */
@@ -565,7 +589,7 @@ void WebSocket::Tick()
                     {
                         m_bConnected = false;
                         m_vecWSPartialBuffer.clear();
-                        NetworkLog(ELogVerbosity::LOG_RELEASE, "[WebSocket] Failed to connect (%d - %s)", m->data.result, curl_easy_strerror(m->data.result));
+                        NetworkLog(ELogVerbosity::LOG_RELEASE, "[WebSocket] Failed to connect (%d - %s), HTTP response %ld", m->data.result, curl_easy_strerror(m->data.result), httpResponseCode);
 
                         // reconnecting? give up eventually
                         if (m_bReconnecting)
@@ -1021,18 +1045,9 @@ void WebSocket::Tick()
 											NGMP_OnlineServices_LobbyInterface* pLobbyInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();
 											if (pLobbyInterface != nullptr)
 											{
-												NetworkMesh* pMesh = pLobbyInterface->GetNetworkMeshForLobby();
-
-												if (pMesh != nullptr)
-												{
-                                                    pMesh->StartConnectionSignalling(startSignallingData.middleware_id.c_str(), startSignallingData.user_id, startSignallingData.preferred_port);
-                                                    NetworkLog(ELogVerbosity::LOG_RELEASE, "[NETWORK_CONNECTION_START_SIGNALLING] Starting signalling with %lld (MWID: %s)", startSignallingData.user_id, startSignallingData.middleware_id.c_str());
-												}
-												else
-												{
-													NetworkLog(ELogVerbosity::LOG_RELEASE, "[NETWORK_CONNECTION_START_SIGNALLING] Network mesh is null");
-													break;
-												}
+												// GeneralsX @bugfix Codex 09/10/2026 Lobby Tick dispatches after HTTP join and callback setup.
+                                                pLobbyInterface->QueueConnectionSignalling(startSignallingData.user_id,
+                                                    startSignallingData.middleware_id, startSignallingData.preferred_port);
 											}
 											else
 											{

@@ -510,6 +510,11 @@ AsciiString OptionPreferences::getSpeakerType()
 Real OptionPreferences::getSoundVolume()
 {
 	OptionPreferences::const_iterator it = find("SFXVolume");
+	// GeneralsX @tweak Codex 08/10/2026 Start OpenAL audio muted until the user sets a volume in Options.
+#ifdef SAGE_USE_OPENAL
+	if (it == end())
+		return 0.0f;
+#endif
 	if (it == end())
 	{
 		Real relative = TheAudio->getAudioSettings()->m_relative2DVolume;
@@ -532,6 +537,11 @@ Real OptionPreferences::getSoundVolume()
 Real OptionPreferences::get3DSoundVolume()
 {
 	OptionPreferences::const_iterator it = find("SFX3DVolume");
+	// GeneralsX @tweak Codex 08/10/2026 Start OpenAL audio muted until the user sets a volume in Options.
+#ifdef SAGE_USE_OPENAL
+	if (it == end())
+		return 0.0f;
+#endif
 	if (it == end())
 	{
 		Real relative = TheAudio->getAudioSettings()->m_relative2DVolume;
@@ -554,6 +564,11 @@ Real OptionPreferences::get3DSoundVolume()
 Real OptionPreferences::getSpeechVolume()
 {
 	OptionPreferences::const_iterator it = find("VoiceVolume");
+	// GeneralsX @tweak Codex 08/10/2026 Start OpenAL audio muted until the user sets a volume in Options.
+#ifdef SAGE_USE_OPENAL
+	if (it == end())
+		return 0.0f;
+#endif
 	if (it == end())
 		return TheAudio->getAudioSettings()->m_defaultSpeechVolume * 100.0f;
 
@@ -755,6 +770,11 @@ void OptionPreferences::getResolution(Int *xres, Int *yres)
 Real OptionPreferences::getMusicVolume()
 {
 	OptionPreferences::const_iterator it = find("MusicVolume");
+	// GeneralsX @tweak Codex 08/10/2026 Start OpenAL audio muted until the user sets a volume in Options.
+#ifdef SAGE_USE_OPENAL
+	if (it == end())
+		return 0.0f;
+#endif
 	if (it == end())
 		return TheAudio->getAudioSettings()->m_defaultMusicVolume * 100.0f;
 
@@ -769,6 +789,11 @@ Real OptionPreferences::getMusicVolume()
 Real OptionPreferences::getMoneyTransactionVolume() const
 {
 	OptionPreferences::const_iterator it = find("MoneyTransactionVolume");
+	// GeneralsX @tweak Codex 08/10/2026 Start OpenAL audio muted until the user sets a volume in Options.
+#ifdef SAGE_USE_OPENAL
+	if (it == end())
+		return 0.0f;
+#endif
 	if (it == end())
 		return TheAudio->getAudioSettings()->m_defaultMoneyTransactionVolume * 100.0f;
 

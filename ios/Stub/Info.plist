@@ -25,7 +25,7 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Used for LAN multiplayer game discovery.</string>
+	<string>Used to connect to local multiplayer servers and players.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIFileSharingEnabled</key>

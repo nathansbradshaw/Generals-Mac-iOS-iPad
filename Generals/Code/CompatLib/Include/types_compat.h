@@ -103,8 +103,10 @@ typedef float FLOAT;
 // Removed duplicate definitions to avoid conflicts
 // typedef int64_t _int64;   // REMOVED - use bittype.h
 // typedef uint64_t _uint64; // REMOVED - use bittype.h
-typedef int64_t int64;
-typedef uint64_t uint64;
+// GeneralsX @build Codex 08/10/2026 Match Valve's public 64-bit aliases on LP64 platforms (int64_t can be long).
+typedef long long int64;
+typedef unsigned long long uint64;
+static_assert(sizeof(int64) == 8 && sizeof(uint64) == 8, "Networking aliases must remain 64-bit");
 
 typedef int32_t *LPARAM;
 typedef size_t WPARAM;

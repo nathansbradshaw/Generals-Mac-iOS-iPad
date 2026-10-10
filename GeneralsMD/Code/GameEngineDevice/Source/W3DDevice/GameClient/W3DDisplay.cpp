@@ -598,12 +598,23 @@ static bool s_filteredDirty = true;
 static void buildFilteredResolutions()
 {
 	s_filteredResolutions.clear();
-	const RenderDeviceDescClass &devDesc = WW3D::Get_Render_Device_Desc(0);
-	const DynamicVectorClass<ResolutionDescClass> &resolutions = devDesc.Enumerate_Resolutions();
-
 	int nativeW = 0, nativeH = 0;
 	float density = 1.0f;
 	DX8Wrapper::GetNativeDisplaySize(nativeW, nativeH, density);
+
+#if defined(__ANDROID__)
+	// GeneralsX @bugfix Codex 13/07/2026 Android exposes one activity-owned
+	// display mode. DXVK's desktop resolution enumeration is not populated on
+	// this path, so querying it dereferences an empty render-device descriptor.
+	if (nativeW > 0 && nativeH > 0) {
+		s_filteredResolutions.push_back({nativeW, nativeH, 32});
+	}
+	s_filteredDirty = false;
+	return;
+#endif
+
+	const RenderDeviceDescClass &devDesc = WW3D::Get_Render_Device_Desc(0);
+	const DynamicVectorClass<ResolutionDescClass> &resolutions = devDesc.Enumerate_Resolutions();
 
 	for (int i = 0; i < resolutions.Count(); i++) {
 		if (!isResolutionSupported(resolutions[i])) continue;
@@ -953,7 +964,8 @@ void W3DDisplay::init()
 		// GeneralsX @bugfix felipebraz 16/02/2026 Show window after DirectX8/DXVK initialized
 		#ifndef _WIN32
 		extern SDL_Window* TheSDL3Window;
-		if (TheSDL3Window) {
+		// GeneralsX @build Codex 08/10/2026 Render test clients without showing or focusing a desktop window.
+		if (TheSDL3Window && !getenv("GENERALSX_HIDDEN_WINDOW")) {
 			fprintf(stderr, "DEBUG: Showing SDL3 window after WW3D init...\n");
 			SDL_ShowWindow(TheSDL3Window);
 		}

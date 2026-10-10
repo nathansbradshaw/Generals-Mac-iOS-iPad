@@ -972,12 +972,25 @@ unsigned DDSFileClass::Get_Pixel(unsigned level,unsigned x,unsigned y) const
 			}
 		}
 		break;
+	// GeneralsX @bugfix Codex 09/10/2026 Decode explicit-alpha DDS on GPUs
+	// without BC support. Retain stored premultiplied colors for DXT2/4,
+	// just as the hardware formats do; blending remains the caller's choice.
 	case WW3D_FORMAT_DXT2:
-		return 0xffffffff;
 	case WW3D_FORMAT_DXT3:
-		return 0xffffffff;
+		{
+			const unsigned char *block = Get_Memory_Pointer(level) +
+				(x/4)*16 + ((y/4)*(Get_Width(level)/4))*16;
+			unsigned pixel = (x%4) + 4*(y%4);
+			unsigned alpha = ((block[pixel/2] >> (4*(pixel%2))) & 15) * 17;
+			const unsigned char *colors = block + 8;
+			unsigned col0 = RGB565_To_ARGB8888(*(const unsigned short *)&colors[0]);
+			unsigned col1 = RGB565_To_ARGB8888(*(const unsigned short *)&colors[2]);
+			unsigned index = (colors[4+y%4] >> (2*(x%4))) & 3;
+			unsigned color = index == 0 ? col0 : index == 1 ? col1 :
+				index == 2 ? Combine_Colors(col1,col0,85) : Combine_Colors(col0,col1,85);
+			return color | (alpha << 24);
+		}
 	case WW3D_FORMAT_DXT4:
-		return 0xffffffff;
 	case WW3D_FORMAT_DXT5:
 		{
 			const unsigned char* alpha_block=Get_Memory_Pointer(level)+(x/4)*16+((y/4)*(Get_Width(level)/4))*16;
@@ -1150,12 +1163,21 @@ bool DDSFileClass::Get_4x4_Block(
 			}
 		}
 		break;
+	// GeneralsX @bugfix Codex 09/10/2026 Write all explicit alpha pixels,
+	// including padded destination rows and optional recoloring.
 	case WW3D_FORMAT_DXT2:
-		return false;
 	case WW3D_FORMAT_DXT3:
-		return false;
+		{
+			bool contains_alpha = false;
+			for (unsigned y=0;y<4;++y) for (unsigned x=0;x<4;++x) {
+				unsigned pixel = Get_Pixel(level,source_x+x,source_y+y);
+				contains_alpha |= (pixel >> 24) != 255;
+				if (has_hsv_shift) Recolor(pixel,hsv_shift);
+				BitmapHandlerClass::Write_B8G8R8A8(dest_ptr+y*dest_pitch+x*dest_bpp,dest_format,pixel);
+			}
+			return contains_alpha;
+		}
 	case WW3D_FORMAT_DXT4:
-		return false;
 	case WW3D_FORMAT_DXT5:
 		{
 			// Init alphas

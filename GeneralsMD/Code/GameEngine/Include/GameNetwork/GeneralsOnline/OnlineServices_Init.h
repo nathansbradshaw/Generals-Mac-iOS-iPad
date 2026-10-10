@@ -38,8 +38,11 @@ struct S3ScreenshotEntry
 #include <mutex>
 #include <atomic>
 
+// GeneralsX @build Codex 08/10/2026 Windows autolink directives must not become Android ELF library dependencies.
+#ifdef _WIN32
 #pragma comment(lib, "libcurl/libcurl.lib")
 #pragma comment(lib, "sentry/sentry.lib")
+#endif
 
 
 #include "GameNetwork/GeneralsOnline/Vendor/libcurl/curl.h"
@@ -131,6 +134,8 @@ public:
 	~WebSocket();
 	void Connect(const char* url, bool bIsReconnect, std::function<void(void)> fnWebsocketConnectedCallback);
 	void Disconnect();
+	void SuspendForAppLifecycle();
+	void ResumeFromAppLifecycle();
 
 	bool IsConnected()
 	{
@@ -208,6 +213,7 @@ private:
 	const int maxReconnectAttempts_Ingame = 240;
 	const int timeBetweenReconnectAttempts_Ingame = 2500;
 	bool m_bReconnecting = false;
+	bool m_bSuspendedForAppLifecycle = false;
     int m_numReconnectAttempts = 0;
     int64_t m_lastReconnectAttempt = -1;
 
@@ -263,6 +269,10 @@ struct RegionResponse
 
 struct ServiceConfig
 {
+    // GeneralsX @feature Codex 09/10/2026 Optional deployment-specific ICE
+    // endpoints; omitted fields retain the existing public-service defaults.
+    std::string stun_servers;
+    std::string turn_servers;
 	bool retry_signalling = false;
 	bool use_mapped_port = true;
 	int min_run_ahead_frames = 4;

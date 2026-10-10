@@ -88,6 +88,8 @@ public:
 
 	virtual void openDevice(void);
 	virtual void closeDevice(void);
+	// GeneralsX @bugfix Codex 09/10/2026 Suspend the mixer without changing individual paused sources.
+	void setAppSuspended(bool suspended);
 	virtual void *getDevice(void) { return m_alcDevice; }
 
 	virtual void stopAudio(AudioAffect which);
@@ -243,5 +245,6 @@ protected:
 
 	ALCdevice *m_alcDevice = nullptr;
 	ALCcontext *m_alcContext = nullptr;
+	bool m_appSuspended = false;
 	OpenALAudioStream* m_binkAudio = nullptr;
 };

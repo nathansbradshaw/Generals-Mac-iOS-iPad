@@ -41,16 +41,6 @@ public:
 	void Tick();
 
 
-	static void SetCACertStoreBad()
-	{
-		m_bCACertBad.store(true);
-	}
-
-	static bool IsCACertStoreBad()
-	{
-		return m_bCACertBad.load();
-	}
-
     void SetProtocolInUse(EIPProtocolVersion proto)
     {
 		m_sProtocolInUse.store(proto);
@@ -86,8 +76,6 @@ private:
 	CURLM* m_pCurl = nullptr;
 
 	std::atomic<EIPProtocolVersion> m_sProtocolInUse = EIPProtocolVersion::DONT_CARE;
-
-	static std::atomic<bool> m_bCACertBad;
 
 	bool m_bProxyEnabled = false;
 	std::string m_strProxyAddr;

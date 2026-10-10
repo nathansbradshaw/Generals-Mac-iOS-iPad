@@ -96,3 +96,17 @@ logs_*.zip
 # iOS shell-app build products (XcodeGen regenerates the project from ios/project.yml)
 ios/build/
 ios/GeneralsXZH.xcodeproj/
+
+# Android Gradle/SDK build products and downloaded SDL AAR dependencies
+android/.gradle/
+android/.idea/
+android/build/
+android/local.properties
+android/app/.cxx/
+android/app/build/
+android/app/libs/*.aar
+
+# GeneralsOnline self-host secrets — never commit real values
+.env
+.env.*
+!.env.example

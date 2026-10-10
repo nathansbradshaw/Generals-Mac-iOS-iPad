@@ -1,5 +1,33 @@
 # NGMP porting log (T3.2+)
 
+## Phase 5 — iOS WebSocket lifecycle bridge (2026-07-12)
+
+The existing iOS SDL lifecycle watcher already paused simulation and rendering,
+but NGMP retained its live curl WebSocket across process suspension. It could
+therefore resume with a stale easy handle and only discover the disconnect via
+the normal 20-second pong timeout.
+
+`WILL/DID_ENTER_BACKGROUND` now release the active WebSocket handle, headers,
+and partial receive state before suspension. `DID_ENTER_FOREGROUND` schedules
+NGMP's existing authenticated reconnect flow instead of touching the stale
+handle. The integration uses two narrow bridge functions implemented inside
+GeneralsOnline, keeping NGMP headers and state out of `SDL3GameEngine`.
+`z_generals` builds and links for both `macos-vulkan` and ARM64 `ios-vulkan`.
+Physical-device lobby and mid-match app-switcher tests remain.
+
+The related `IP_BOUND_IF` audit is also complete. That socket option exists
+only inside the legacy iOS `UDP::Bind` path used by `UDPTransport` for LAN
+broadcast routing. Online matches select `NextGenTransport`, whose
+GameNetworkingSockets/ICE sockets never pass through `UDP::Bind`; the legacy
+binding therefore cannot pin or filter GeneralsOnline traffic. No code change
+is required. The iOS Local Network usage text now explicitly covers local
+multiplayer servers and peers.
+
+A `package-ios-zh.sh --dev` attempt could not pass signing on this host:
+CoreDevice was unavailable, `security find-identity -p codesigning` reported no
+valid identities, and the script's default external team/bundle had no matching
+profile. The ARM64 engine app target itself continues to build and link.
+
 ## Phase 5 — persistent server connection test (2026-07-12)
 
 The cross-platform server-address field now has a non-destructive Test
@@ -780,3 +808,83 @@ server field to the Mac's LAN IP (e.g. `https://192.168.1.193:9000/env/prod/
 contract/1`), and make the backend bind the LAN interface (currently Kestrel
 listens on `127.0.0.1:9000` per appsettings — needs `0.0.0.0` / LAN IP), plus an
 iOS-appropriate auth/token path (no shell env on device).
+
+## Multi-device backend: request-host ws derivation + Docker/Tailscale (2026-07-13)
+
+Groundwork for opening the self-hosted backend to remote devices (Tailscale /
+LAN / tunnel). Architecture reminder: the backend only carries the HTTP API +
+signalling websocket; gameplay is P2P (GNS ICE/STUN/TURN) and never transits the
+backend.
+
+**Server-side unlock (done + tested)** — removes the hardcoded-address footgun:
+- `Program.GetWebSocketAddress(bool, HostString)` now derives the ws_uri from the
+  host the client actually connected through (`wss://{request-host}/ws`), instead
+  of the fixed `Core.ws_address`. Falls back to config when no host / when
+  `Core.ws_derive_from_request_host=false` (default true). Call sites
+  (LoginWithToken, CheckLogin) pass `Request.Host`.
+- Kestrel now binds `0.0.0.0:9000/9001` (was `localhost` only) so other devices
+  can reach it.
+- Verified: login via `localhost` → `wss://localhost:9000/ws`; via LAN IP
+  `192.168.1.130` → `wss://192.168.1.130:9000/ws`. (Note: the Mac's LAN IP had
+  already drifted .193→.130 via DHCP — motivates the stable Tailscale IP.)
+- Net effect: point the client (in-app Extras field) at any reachable host and
+  both the API and the websocket work with zero server reconfig. This also
+  directly unblocks T5.4 (iPad↔Mac) — the iPad's localhost VersionCheck failure
+  was this same issue.
+
+**Dockerized backend (built + smoke-tested)** — replaces the reboot-fragile
+launchd deployment, per the Docker preference:
+- `GenOnlineService/Dockerfile`: multi-stage .NET 10 (sdk→aspnet), bakes a
+  self-signed TLS cert (clients verify-off, so any cert works), stages `data/`
+  explicitly (csproj uses Windows `data\` paths that don't resolve on Linux),
+  and exempts the NU1902/1903 audit warnings that Release-config promotes to
+  errors (compiled service identical to the local build).
+- `docker-compose.yml`: base LAN mode — `mariadb` (reuses the existing
+  `go-mariadb-data` volume, so seeded accounts persist; imports structure.sql on
+  first init) + `backend` (built image, ports 9000/9001 published, healthcheck-
+  gated DB dependency).
+- `docker-compose.tailscale.yml`: overlay adding a `tailscale` sidecar; the
+  backend joins its netns (`network_mode: service:tailscale`) → reachable at the
+  tailnet IP. Needs a `TS_AUTHKEY` in `~/go-services/.env` (`.env.example`
+  provided) — Tailscale account/key is the one step that must be done manually.
+- Smoke test: built `go-backend:test`, ran it on host port 9010 against the
+  existing MariaDB via `host.docker.internal` — serves HTTPS, connects to the DB,
+  login `result:1`, and `ws_uri` correctly derived `wss://localhost:9010/ws`
+  through Docker's port mapping.
+
+NOT cut over yet: the working launchd backend (port 9000) + standalone
+`go-mariadb` are still the live stack. Switching to compose (`docker compose up
+-d --build`) requires stopping those two (the DB volume is shared, so seeded
+accounts carry over) — left as the user's call. Tailscale requires their auth
+key. Cert note: HTTPS via self-signed cert inside the container (`use_os_cert_
+store=false`, cert paths via compose env).
+
+## Secret hygiene: env-ify JWT key + DB password, audit repos (2026-07-13)
+
+Audit found the JWT signing key committed AND pushed in the public GeneralsX fork
+(`TWO_CLIENT_TEST.md`, commit a1d0e92e3). Backend (`~/go-services`, tracks the
+public upstream) had the real key only in the working-tree appsettings.json
+(HEAD was placeholder), one commit from leaking.
+
+Remediation (secrets now live only in gitignored `.env` + the launchd plist,
+which is outside any repo):
+- **Backend** `appsettings.json`: `JwtSettings.Key` and `Database.db_password`
+  replaced with `SET_VIA_ENV_*` placeholders (non-secret config — 0.0.0.0 bind,
+  ws_derive, db host/name — kept, so it's committable). Real values injected via
+  ASP.NET env vars (`JwtSettings__Key`, `Database__db_password`): the launchd
+  plist `EnvironmentVariables` for the host run, and `~/go-services/.env`
+  (via `env_file`) for docker compose. `.gitignore` now covers `.env`,
+  `.env.*` (except `.env.example`), `appsettings.Local.json`, `certs/`.
+  Rebuilt + agent reloaded (bootout/bootstrap, since plist env changed) — login
+  still `result:1`, so the env override + DB both work.
+- **GeneralsX**: scrubbed the key from `TWO_CLIENT_TEST.md` (now sources it from a
+  gitignored `.env` → `GENERALSX_ONLINE_JWT_KEY`). Added `.env`/`.env.*` to
+  `.gitignore` + `.env.example`. Working tree verified free of the key.
+- `.env.example` files added to both repos.
+
+STILL OPEN — the leaked key is in PUBLIC git history (already pushed); scrubbing
+the file doesn't un-leak it. The real fix is **rotation**: `openssl rand -hex 48`
+→ update `JwtSettings__Key` in `~/go-services/.env` + the launchd plist +
+`GENERALSX_ONLINE_JWT_KEY` in `~/Documents/GitHub/GeneralsX/.env`, restart the
+backend (invalidates existing tokens — harmless, they're per-session). Optional:
+history rewrite, but rotation is the definitive fix.

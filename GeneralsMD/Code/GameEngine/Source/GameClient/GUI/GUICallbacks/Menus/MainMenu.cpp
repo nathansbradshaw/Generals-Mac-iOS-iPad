@@ -709,6 +709,16 @@ void MainMenuInit( WindowLayout *layout, void *userData )
 	// set keyboard focus to main parent
 	TheWindowManager->winSetFocus( parentMainMenu );
 
+	// GeneralsX @bugfix Codex 09/10/2026 Touchscreens cannot hover to reveal
+	// the stock shell menu. Reveal it at initialization so the first tap acts.
+	if (TheMouse->hasTouchInput()) {
+		FirstTimeRunningTheGame = FALSE;
+		notShown = FALSE;
+		dropDownWindows[DROPDOWN_MAIN]->winHide(FALSE);
+		TheTransitionHandler->setGroup("MainMenuFade", TRUE);
+		TheTransitionHandler->setGroup("MainMenuDefaultMenu");
+		TheMouse->setVisibility(TRUE);
+	}
 
 }
 

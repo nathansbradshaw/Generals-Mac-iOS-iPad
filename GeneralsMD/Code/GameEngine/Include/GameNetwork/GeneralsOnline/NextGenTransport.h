@@ -9,6 +9,8 @@
 
 #include "GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/isteamnetworkingmessages.h"
 
+// GeneralsX @build Codex 08/10/2026 Windows autolink directives must not become Android ELF library dependencies.
+#ifdef _WIN32
 #pragma comment(lib, "ValveNetworkingSockets/GameNetworkingSockets.lib")
 #pragma comment(lib, "ValveNetworkingSockets/abseil_dll.lib")
 #pragma comment(lib, "ValveNetworkingSockets/libcrypto.lib")
@@ -17,6 +19,7 @@
 #pragma comment(lib, "ValveNetworkingSockets/steamwebrtc.lib")
 #pragma comment(lib, "ValveNetworkingSockets/webrtc-lite.lib")
 #pragma comment(lib, "Secur32.lib")
+#endif
 
 // Struct to track retry state for outgoing packets
 struct OutgoingPacketState

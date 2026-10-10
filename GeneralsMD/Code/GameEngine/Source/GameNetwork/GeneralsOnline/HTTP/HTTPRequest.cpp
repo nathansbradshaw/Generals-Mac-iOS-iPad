@@ -1,6 +1,7 @@
 #include "GameNetwork/GeneralsOnline/HTTP/HTTPRequest.h"
 #include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
 #include "GameNetwork/GeneralsOnline/HTTP/HTTPManager.h"
+#include "GameNetwork/GeneralsOnline/HTTP/TLSVerification.h"
 #include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
 
 size_t WriteMemoryCallback(void* contents, size_t sizePerByte, size_t numBytes, void* userp)
@@ -150,12 +151,10 @@ bool HTTPRequest::InvokeDelayAction()
 
 void HTTPRequest::Threaded_SetComplete(CURLcode result)
 {
-	if (result == CURLE_SSL_CACERT_BADFILE || result == CURLE_PEER_FAILED_VERIFICATION)
-	{
-		HTTPManager::SetCACertStoreBad();
-	}
-	// store response code
-	curl_easy_getinfo(m_pCURL, CURLINFO_RESPONSE_CODE, &m_responseCode);
+	// GeneralsX @bugfix Codex 09/10/2026 libcurl writes a long; preserve the class layout and callback API.
+	long responseCode = -1;
+	curl_easy_getinfo(m_pCURL, CURLINFO_RESPONSE_CODE, &responseCode);
+	m_responseCode = static_cast<int>(responseCode);
 
 	if (result == CURLE_OK)
 	{
@@ -306,40 +305,10 @@ void HTTPRequest::PlatformStartRequest()
 			curl_easy_setopt(m_pCURL, CURLOPT_PROXYPORT, pHTTPManager->GetProxyPort());
 		}
 
-		curl_easy_setopt(m_pCURL, CURLOPT_SSL_VERIFYPEER, 0);
-		curl_easy_setopt(m_pCURL, CURLOPT_SSL_VERIFYHOST, 0);
-		curl_easy_setopt(m_pCURL, CURLOPT_VERBOSE, 1);
-#else
-
-		// TODO_NGMP: We should move to libcurl backed by SChannel so we don't need to do this
-		// Check if cacert.pem exists
-
-		if (HTTPManager::IsCACertStoreBad())
-		{
-            curl_easy_setopt(m_pCURL, CURLOPT_SSL_VERIFYPEER, 0);
-            curl_easy_setopt(m_pCURL, CURLOPT_SSL_VERIFYHOST, 0);
-		}
-		else
-		{
-            std::ifstream certFile("cacert.pem");
-            if (certFile.good())
-            {
-                certFile.close();
-                curl_easy_setopt(m_pCURL, CURLOPT_CAINFO, "cacert.pem");
-
-                curl_easy_setopt(m_pCURL, CURLOPT_SSL_VERIFYPEER, 1L);
-                curl_easy_setopt(m_pCURL, CURLOPT_SSL_VERIFYHOST, 2L);
-            }
-            else
-            {
-				HTTPManager::SetCACertStoreBad();
-                curl_easy_setopt(m_pCURL, CURLOPT_SSL_VERIFYPEER, 0);
-                curl_easy_setopt(m_pCURL, CURLOPT_SSL_VERIFYHOST, 0);
-            }
-		}
-
-       
+		curl_easy_setopt(m_pCURL, CURLOPT_VERBOSE, 1L);
 #endif
+
+        ConfigureCurlTLSVerification(m_pCURL);
 
 		pHTTPManager->AddHandleToMulti(m_pCURL);
 	}

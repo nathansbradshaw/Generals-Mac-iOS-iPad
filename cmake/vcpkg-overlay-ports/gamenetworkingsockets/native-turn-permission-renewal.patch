@@ -1,0 +1,43 @@
+--- a/src/steamnetworkingsockets/clientlib/steamnetworkingsockets_ice_client.h
++++ b/src/steamnetworkingsockets/clientlib/steamnetworkingsockets_ice_client.h
+@@ -116,6 +116,9 @@
+         // When less than the session's m_nTURNPermissionRevision[v4/v6] for our family, a
+         // new CreatePermission sweep is needed.
+         int m_nTURNPermissionRevision = 0;
++
++        // GeneralsX @bugfix Codex 09/10/2026 RFC8656 permissions expire after300s, independently of allocations.
++        SteamNetworkingMicroseconds m_usecPermissionRefreshAfter = 0;
+ 
+         /// Send a packet through this interface to the destination remote address.
+         /// If relay address is non-zero, send via Send Indication to the TURN server
+--- a/src/steamnetworkingsockets/clientlib/steamnetworkingsockets_ice_client.cpp
++++ b/src/steamnetworkingsockets/clientlib/steamnetworkingsockets_ice_client.cpp
+@@ -2105,6 +2105,7 @@
+     pIntf->m_addrTURNServer.Clear();   // clears "discovery done" signal; re-allocation starts next tick
+     pIntf->m_usecRefreshAfter  = 0;
+     pIntf->m_nTURNPermissionRevision = 0;
++    pIntf->m_usecPermissionRefreshAfter = 0;
+     // Leave m_bRelayFailed = false so Think_DiscoverRelayCandidate retries.
+ }
+ 
+@@ -2130,7 +2131,9 @@
+         const std_vector<CIPAddress> &vecPermitted = bIsIPv4 ? m_vecTURNPermittedIPv4 : m_vecTURNPermittedIPv6;
+         int nSessionRevision = bIsIPv4 ? m_nTURNPermissionRevisionIPv4 : m_nTURNPermissionRevisionIPv6;
+ 
+-        if ( pIntf->m_nTURNPermissionRevision >= nSessionRevision || vecPermitted.empty() )
++        // GeneralsX @bugfix Codex 09/10/2026 Renew unchanged peer permissions before their300-second expiry.
++        if ( vecPermitted.empty() || ( pIntf->m_nTURNPermissionRevision >= nSessionRevision
++            && usecNow < pIntf->m_usecPermissionRefreshAfter ) )
+             continue;
+ 
+         // Build one XOR-PEER-ADDRESS attribute per permitted IP.
+@@ -2238,6 +2241,9 @@
+     // If more IPs arrived while the request was in flight, the revision will still be
+     // behind the session's current revision, and we'll send another CreatePermission.
+     pIntf->m_nTURNPermissionRevision = info.m_pRequest->m_nTURNPermissionRevision;
++    // Renew successful permissions after240s; throttle authenticated error replies to one retry per5s.
++    pIntf->m_usecPermissionRefreshAfter = info.m_usecNow
++        + ( info.m_pHeader->m_nMessageType == k_nTURN_CreatePermissionSuccess ? 240 : 5 ) * k_nMillion;
+ }
+ 
+ void CSteamNetworkingICESession::STUNRequestCallback_ServerReflexiveCandidate( const RecvSTUNPktInfo_t &info )

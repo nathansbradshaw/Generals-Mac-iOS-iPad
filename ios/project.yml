@@ -45,4 +45,4 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         UIApplicationSupportsIndirectInputEvents: true
-        NSLocalNetworkUsageDescription: "Used for LAN multiplayer game discovery."
+        NSLocalNetworkUsageDescription: "Used to connect to local multiplayer servers and players."

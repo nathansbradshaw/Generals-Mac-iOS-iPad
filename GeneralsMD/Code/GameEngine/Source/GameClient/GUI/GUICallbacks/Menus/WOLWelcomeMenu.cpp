@@ -179,9 +179,24 @@ void updateLocalPlayerScores(AsciiString name, const WOL::Ladder *ladder, const 
 static void enableControls( Bool state )
 {
 	if (buttonQuickMatch)
+	{
+#if defined(SAGE_GENERALS_ONLINE)
+		// GeneralsX @tweak BenderAI 13/07/2026 Keep unported matchmaking disabled until it is part of the GeneralsOnline scope.
+		buttonQuickMatch->winEnable(FALSE);
+#else
 		buttonQuickMatch->winEnable(state);
+#endif
+	}
 	if (buttonLobby)
 		buttonLobby->winEnable(state);
+#if defined(SAGE_GENERALS_ONLINE)
+	// GeneralsX @tweak BenderAI 13/07/2026 Keep the unported communicator disabled while custom matches remain available.
+	if (buttonBuddies)
+		buttonBuddies->winEnable(FALSE);
+	// GeneralsX @tweak BenderAI 13/07/2026 Keep the unported personal-info overlay disabled with the other deferred online features.
+	if (buttonMyInfo)
+		buttonMyInfo->winEnable(FALSE);
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------

@@ -1,0 +1,101 @@
+plugins {
+    id "com.android.application"
+}
+
+def generalsxFullEngine = providers.gradleProperty("generalsxFullEngine")
+    .map { it.toBoolean() }
+    .orElse(false)
+    .get()
+
+// GeneralsX @build Codex 08/10/2026 Keep offline/bootstrap builds available while enabling NGMP for full-engine cross-play.
+def generalsxOnline = providers.gradleProperty("generalsxOnline")
+    .map { it.toBoolean() }
+    .orElse(false)
+    .get()
+if (generalsxOnline && !generalsxFullEngine) {
+    throw new GradleException("GeneralsOnline requires -PgeneralsxFullEngine=true")
+}
+
+android {
+    namespace "com.nathanbradshaw.generalsxzh"
+    compileSdk 35
+    ndkVersion "28.2.13676358"
+
+    defaultConfig {
+        applicationId "com.nathanbradshaw.generalsxzh"
+        minSdk 30
+        targetSdk 35
+        versionCode 1
+        versionName "0.1-bootstrap"
+
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+
+        externalNativeBuild {
+            cmake {
+                // GeneralsX @build Codex 08/10/2026 Bound background native compilation to avoid overwhelming a shared desktop.
+                arguments "-DANDROID_STL=c++_shared",
+                    "-DCMAKE_JOB_POOLS=generalsx_compile=2;generalsx_link=1",
+                    "-DCMAKE_JOB_POOL_COMPILE=generalsx_compile",
+                    "-DCMAKE_JOB_POOL_LINK=generalsx_link"
+                cppFlags "-std=c++17"
+                targets generalsxFullEngine ? "z_generals" : "main"
+                if (generalsxFullEngine) {
+                    arguments "-DRTS_BUILD_CORE_TOOLS=OFF",
+                        "-DRTS_BUILD_GENERALS=OFF",
+                        "-DRTS_BUILD_ZEROHOUR=ON",
+                        "-DRTS_BUILD_ZEROHOUR_TOOLS=OFF",
+                        "-DRTS_BUILD_ZEROHOUR_EXTRAS=OFF",
+                        "-DRTS_BUILD_OPTION_FFMPEG=ON",
+                        "-DRTS_BUILD_OPTION_SAGE_PATCH=OFF",
+                        "-DRTS_CRASHDUMP_ENABLE=OFF",
+                        "-DSAGE_GENERALS_ONLINE=${generalsxOnline ? 'ON' : 'OFF'}",
+                        "-DSAGE_UPDATE_CHECK=OFF",
+                        "-DSAGE_USE_DX8=OFF",
+                        "-DSAGE_USE_GLM=ON",
+                        "-DSAGE_USE_MOLTENVK=OFF",
+                        "-DSAGE_USE_OPENAL=ON",
+                        "-DSAGE_USE_SDL3=ON"
+                }
+            }
+        }
+    }
+
+    buildFeatures {
+        prefab true
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDir "build/generated/jniLibs"
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path generalsxFullEngine ? file("../../CMakeLists.txt") : file("src/main/cpp/CMakeLists.txt")
+            version "3.31.6"
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+}
+
+dependencies {
+    implementation files("libs/SDL3-3.4.2.aar")
+    implementation files("libs/SDL3_image-3.4.0.aar")
+}

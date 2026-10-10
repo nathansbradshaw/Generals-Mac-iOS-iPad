@@ -1,4 +1,5 @@
 #include "thread_compat.h"
+#include <cerrno>
 #include <map>
 #include <mutex>
 
@@ -58,5 +59,15 @@ void* CreateThread(void *lpSecure, size_t dwStackSize, start_routine lpStartAddr
 
 int TerminateThread(void *hThread, unsigned long dwExitCode)
 {
+#if defined(__ANDROID__)
+	// GeneralsX @build BenderAI 13/07/2026 Bionic has no pthread cancellation.
+	// Report the unsupported forced-termination request so callers cannot
+	// mistake a detached or still-running thread for a terminated one.
+	(void)hThread;
+	(void)dwExitCode;
+	errno = ENOTSUP;
+	return 0;
+#else
 	return pthread_cancel((pthread_t)hThread);
+#endif
 }

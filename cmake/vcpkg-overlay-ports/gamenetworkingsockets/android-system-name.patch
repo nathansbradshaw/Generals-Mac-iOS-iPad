@@ -1,0 +1,22 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -151,7 +151,7 @@
+ 		target_compile_options(${TGT} PRIVATE -ffunction-sections -fdata-sections ${TARGET_ARCH_FLAGS})
+ 	endif()
+ 
+-	if(CMAKE_SYSTEM_NAME MATCHES Linux)
++	if(CMAKE_SYSTEM_NAME MATCHES "Linux|Android")
+ 		target_compile_definitions(${TGT} PUBLIC LINUX)
+ 	elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin|iOS")
+ 		target_compile_definitions(${TGT} PUBLIC OSX)
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -321,7 +321,7 @@
+ 		endforeach()
+ 	endif()
+ 
+-	if(CMAKE_SYSTEM_NAME MATCHES Linux)
++	if(CMAKE_SYSTEM_NAME MATCHES "Linux|Android")
+ 		#if(USE_STEAMWEBRTC AND NOT STEAMWEBRTC_USE_STATIC_LIBS)
+ 		#	target_link_libraries(${GNS_TARGET} PRIVATE dl)
+ 		#endif()

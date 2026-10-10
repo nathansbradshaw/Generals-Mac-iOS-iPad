@@ -1,6 +1,13 @@
 name: Native headless online callback validation
 # GeneralsX @build Codex 08/10/2026 Build actual native binaries and compare populated replay state.
 on:
+  push:
+    branches: [codex/native-replay-ci-20261008]
+    paths:
+      - .github/workflows/native-headless-online-client-tests.yml
+      - scripts/qa/replay/headless-online-expected-identities.json
+      - scripts/qa/replay/run-headless-online-callback-probe.py
+      - scripts/qa/replay/audit-windows-command-smoke-hook.py
   workflow_dispatch:
 permissions:
   contents: read

@@ -31,7 +31,7 @@ jobs:
           mkdir inputs output
           tar -xzf inputs.tar.gz -C inputs --wildcards 'source/*'
           printf '%s' "$SOURCE_OVERLAY" | openssl base64 -d -A > overlay.enc
-          echo '1b2a6fc209bcb5d6b82631af436cb112d6d377100ccdb336907f86a9116b372f  overlay.enc' | sha256sum --check
+          echo '870768df8d156d0b1b6584f494344ffb3bb1d9dddec36cd2f991fca357df4f9c  overlay.enc' | sha256sum --check
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in overlay.enc -out overlay.patch.gz -pass env:REPLAY_BUNDLE_KEY
           gzip -d overlay.patch.gz
           git apply --check --directory=inputs/source overlay.patch

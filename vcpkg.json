@@ -52,12 +52,10 @@
             "description": "GeneralsOnline (NGMP) multiplayer client dependencies",
             "dependencies": [
                 {
-                    "name": "gamenetworkingsockets",
-                    "platform": "!windows"
+                    "name": "gamenetworkingsockets"
                 },
                 {
                     "name": "curl",
-                    "platform": "!windows",
                     "features": [
                         "ssl",
                         "websockets"

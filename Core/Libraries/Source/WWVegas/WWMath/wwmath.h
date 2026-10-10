@@ -721,7 +721,9 @@ WWINLINE int WWMath::Float_To_Int_Floor (const float& f)
 // Inverse square root
 // ----------------------------------------------------------------------------
 
-#if defined(_MSC_VER) && defined(_M_IX86)
+// GeneralsX @bugfix Codex 10/10/2026 Modern Windows uses the shared portable inverse square root for cross-play.
+// Keep the original approximation only for the VC6 retail compatibility baseline.
+#if defined(_MSC_VER) && _MSC_VER <= 1200 && defined(_M_IX86)
 WWINLINE float WWMath::Inv_Sqrt(float a)
 {
 	float retval;

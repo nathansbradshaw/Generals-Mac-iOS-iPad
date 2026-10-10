@@ -10,7 +10,8 @@
 #include "GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/isteamnetworkingmessages.h"
 
 // GeneralsX @build Codex 08/10/2026 Windows autolink directives must not become Android ELF library dependencies.
-#ifdef _WIN32
+// GeneralsX @build Codex 10/10/2026 CMake supplies the imported static SDK and its dependencies.
+#if defined(_WIN32) && !defined(SAGE_GENERALS_ONLINE)
 #pragma comment(lib, "ValveNetworkingSockets/GameNetworkingSockets.lib")
 #pragma comment(lib, "ValveNetworkingSockets/abseil_dll.lib")
 #pragma comment(lib, "ValveNetworkingSockets/libcrypto.lib")
@@ -18,6 +19,8 @@
 #pragma comment(lib, "ValveNetworkingSockets/libssl.lib")
 #pragma comment(lib, "ValveNetworkingSockets/steamwebrtc.lib")
 #pragma comment(lib, "ValveNetworkingSockets/webrtc-lite.lib")
+#endif
+#ifdef _WIN32
 #pragma comment(lib, "Secur32.lib")
 #endif
 

@@ -39,7 +39,8 @@ struct S3ScreenshotEntry
 #include <atomic>
 
 // GeneralsX @build Codex 08/10/2026 Windows autolink directives must not become Android ELF library dependencies.
-#ifdef _WIN32
+// GeneralsX @build Codex 10/10/2026 CMake links imported curl; the in-tree sentry header is a stub.
+#if defined(_WIN32) && !defined(SAGE_GENERALS_ONLINE)
 #pragma comment(lib, "libcurl/libcurl.lib")
 #pragma comment(lib, "sentry/sentry.lib")
 #endif

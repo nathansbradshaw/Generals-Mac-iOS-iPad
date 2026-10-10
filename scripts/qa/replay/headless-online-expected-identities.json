@@ -54,9 +54,9 @@
     "Core/GameEngine/Source/Common/System/GameMemory.cpp": "c1d038b90f7533547dfbe21903ce82e27d67f06f5d5a891e893a1ef19c8a91bd",
     "GeneralsMD/Code/GameEngine/Source/GameClient/GUI/GameWindowManager.cpp": "959a52eca7a028402941bc0977a7acb0e40113d336528518f19c9d3164443b8b",
     "GeneralsMD/Code/GameEngine/Source/GameLogic/System/GameLogic.cpp": "af8cf538cddf223288436481eeae446f9785c9b016080a9fb4b9761171bb5ff1",
-    "GeneralsMD/Code/GameEngineDevice/Source/Win32Device/Common/Win32GameEngine.cpp": "33ef699fcf0cb6a215ceeb8dcf150aebf361f1322c737d22f0ddaf080ad13e03",
+    "GeneralsMD/Code/GameEngineDevice/Source/Win32Device/Common/Win32GameEngine.cpp": "da05ffbe226df26eacb76f13d26407d49dbaaa6b6aeae5c88fc6b3305bb5c369",
     "Core/GameEngine/Include/GameClient/GameWindow.h": "f206e1a2d28fa95ec244d3b02c2ec1911ef4ec4f14074aec1340b0edf03af2a2",
-    "GeneralsMD/Code/GameEngine/Source/GameClient/GUI/GameWindowTransitionsStyles.cpp": "da05ffbe226df26eacb76f13d26407d49dbaaa6b6aeae5c88fc6b3305bb5c369"
+    "GeneralsMD/Code/GameEngine/Source/GameClient/GUI/GameWindowTransitionsStyles.cpp": "e473b97b62f6440c81a30b5bfe73c1e0944b14127dbc0cdb63de674af4ec833f"
   },
   "sdk_source_sha256": {
     "src/steamnetworkingsockets/clientlib/steamnetworkingsockets_ice_client.cpp": "47542c5dd0db4ece7bd51b98f2d276a080749bfc7ddc282deba3d1b5716421bb",

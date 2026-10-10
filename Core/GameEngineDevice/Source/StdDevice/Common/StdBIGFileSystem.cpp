@@ -496,6 +496,8 @@ void StdBIGFileSystem::init() {
 
 	AsciiString primaryAssetsDirectory;
 	const Bool loadedPrimaryAssets = loadPrimaryGameAssets(this, &primaryAssetsDirectory);
+	// GeneralsX @build Codex 10/10/2026 Keep the asset load and debug assertion when release assertions compile out.
+	(void)loadedPrimaryAssets;
 	DEBUG_ASSERTCRASH(loadedPrimaryAssets, ("No BIG files were loaded for the primary game assets."));
 
 	// GeneralsX @bugfix felipebraz 23/03/2026 Propagate the resolved asset root to the local file system.

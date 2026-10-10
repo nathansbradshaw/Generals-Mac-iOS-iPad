@@ -82,6 +82,10 @@
 // Horrible reference, but we really, really need to know if we are windowed.
 extern bool DX8Wrapper_IsWindowed;
 extern HWND ApplicationHWnd;
+// GeneralsX @build Codex 10/10/2026 Declare the existing engine Unicode capability used by crash reporting.
+#ifdef _WIN32
+extern const Bool TheSystemIsUnicode;
+#endif
 
 extern const char *gAppPrefix; /// So WB can have a different log file name.
 

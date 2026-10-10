@@ -497,6 +497,8 @@ void Win32BIGFileSystem::init() {
 
 	AsciiString primaryAssetsDirectory;
 	const Bool loadedPrimaryAssets = loadPrimaryGameAssets(this, &primaryAssetsDirectory);
+	// GeneralsX @build Codex 10/10/2026 Keep the asset load and debug assertion when release assertions compile out.
+	(void)loadedPrimaryAssets;
 	DEBUG_ASSERTCRASH(loadedPrimaryAssets, ("No BIG files were loaded for the primary game assets."));
 
 #if RTS_ZEROHOUR

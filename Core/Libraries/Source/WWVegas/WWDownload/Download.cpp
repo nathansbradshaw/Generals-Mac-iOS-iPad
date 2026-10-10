@@ -19,6 +19,8 @@
 // Download.cpp : Implementation of CDownload
 #include "DownloadDebug.h"
 #include "Download.h"
+// GeneralsX @build Codex 10/10/2026 Declare the existing bounded string helpers explicitly.
+#include "WWLib/stringex.h"
 
 // GeneralsX @refactor BenderAI 10/02/2026
 // Added platform guards for Windows-specific headers

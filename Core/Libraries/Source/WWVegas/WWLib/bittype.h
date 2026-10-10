@@ -48,7 +48,8 @@ typedef signed short	sint16;
 
 // TheSuperHackers @build 10/02/2026 BenderAI  
 // uint32/sint32: Use fixed-width types on 64-bit platforms (long is 64-bit on Linux/macOS x64)
-#if defined(__linux__) || defined(__APPLE__)
+// GeneralsX @build Codex 10/10/2026 Modern Windows fixed-width integers must match networking SDK typedefs.
+#if defined(__linux__) || defined(__APPLE__) || (defined(_MSC_VER) && _MSC_VER >= 1300)
     typedef uint32_t uint32;
     typedef int32_t  sint32;
 #else

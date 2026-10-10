@@ -48,7 +48,12 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 // GeneralsX @build BenderAI 12/02/2026 Use compat header for Linux mbstring compatibility
+// GeneralsX @build Codex 10/10/2026 Select the native CRT multibyte declarations on Windows.
+#ifdef _WIN32
+#include <mbstring.h>
+#else
 #include "mbstring_compat.h"
+#endif
 
 #include "Common/Debug.h"
 #include "Common/Language.h"

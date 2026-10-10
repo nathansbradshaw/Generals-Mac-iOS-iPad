@@ -289,8 +289,10 @@ void PingThreadClass::Thread_Function()
 			}
 			else
 			{
+				// GeneralsX @bugfix Codex 10/10/2026 Use the resolved network-order address instead of leaving the failure sentinel.
 				in_addr *hostNode = (in_addr *) hostStruct->h_addr;
-				}
+				IP = hostNode->s_addr;
+			}
 			}
 
 			// do ping

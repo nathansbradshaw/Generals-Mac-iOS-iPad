@@ -111,10 +111,13 @@ def main():
         diagnostic_env['XDG_DATA_HOME'] = str(args.output / 'diagnostic-userdata')
         diagnostic_env['GENERALSX_CRC_TRACE'] = str(args.output / 'diagnostic-state')
         diagnostic_env['VK_LOADER_DEBUG'] = 'error,warn'
+        # This native CI renderer targets x86_64 Linux; record the allocator ABI arguments before its crash.
+        debugger_script = args.output / 'allocation-breakpoints.gdb'
+        debugger_script.write_text('set pagination off\nset breakpoint pending on\nbreak _ZnwmSt11align_val_t\ncommands\nsilent\nprintf "GENERALSX_ALIGNED_NEW size=%lu alignment=%lu\\n", $rdi, $rsi\ncontinue\nend\nrun\nthread apply all bt 16\n')
         with (args.output / 'gdb-backtrace.log').open('wb') as diagnostic_log:
             try:
                 diagnostic = subprocess.run(
-                    ['gdb', '--batch', '-ex', 'set pagination off', '-ex', 'run', '-ex', 'thread apply all bt 16', '--args',
+                    ['gdb', '--batch', '--command', str(debugger_script), '--args',
                      str(args.executable), '-win', '-quickstart', '-nologo', '-noshellmap', '-replay', str(args.replay)],
                     cwd=args.assets, env=diagnostic_env, stdout=diagnostic_log, stderr=subprocess.STDOUT,
                     timeout=min(args.timeout, 120),
